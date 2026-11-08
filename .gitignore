@@ -1,0 +1,10 @@
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+data/
+.playwright-mcp/
+.env
+.env.local
+.env.*.local
+.claude/
