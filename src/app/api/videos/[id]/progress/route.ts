@@ -1,6 +1,6 @@
 import { currentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { COMPLETE_PERCENT, recordActivity } from "@/lib/progress";
+import { COMPLETE_PERCENT, recordActivity, trackHasVideo } from "@/lib/progress";
 import { subscriptionState } from "@/lib/subscription";
 
 export const runtime = "nodejs";
@@ -26,12 +26,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const database = db();
-  const video = database
-    .prepare(
-      "SELECT v.duration_seconds, c.track_id FROM videos v JOIN courses c ON c.id = v.course_id WHERE v.id = ?",
-    )
-    .get(videoId) as { duration_seconds: number; track_id: number } | undefined;
-  if (!video || video.track_id !== user.track_id) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (user.track_id === null || !trackHasVideo(user.track_id, videoId)) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+  const video = database.prepare("SELECT duration_seconds FROM videos WHERE id = ?").get(videoId) as {
+    duration_seconds: number;
+  };
 
   const body = (await request.json().catch(() => null)) as {
     buckets?: unknown;

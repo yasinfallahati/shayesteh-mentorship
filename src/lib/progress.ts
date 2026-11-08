@@ -41,6 +41,17 @@ function weightedPercent(videos: VideoRow[]) {
   return Math.round(earned / total);
 }
 
+export function trackHasVideo(trackId: number, videoId: number) {
+  return Boolean(
+    db()
+      .prepare(
+        `SELECT 1 FROM videos v JOIN track_courses tc ON tc.course_id = v.course_id
+         WHERE v.id = ? AND tc.track_id = ?`,
+      )
+      .get(videoId, trackId),
+  );
+}
+
 export function getTrackProgress(userId: number, trackId: number): TrackProgress {
   const rows = db()
     .prepare(
@@ -48,11 +59,12 @@ export function getTrackProgress(userId: number, trackId: number): TrackProgress
               v.id AS video_id, v.title AS video_title, v.duration_seconds,
               COALESCE(p.percent, 0) AS percent, COALESCE(p.watched_seconds, 0) AS watched_seconds,
               p.completed_at, p.updated_at
-       FROM courses c
+       FROM track_courses tc
+       JOIN courses c ON c.id = tc.course_id
        LEFT JOIN videos v ON v.course_id = c.id
        LEFT JOIN video_progress p ON p.video_id = v.id AND p.user_id = ?
-       WHERE c.track_id = ?
-       ORDER BY c.position, c.id, v.position, v.id`,
+       WHERE tc.track_id = ?
+       ORDER BY tc.position, c.id, v.position, v.id`,
     )
     .all(userId, trackId) as {
     course_id: number;

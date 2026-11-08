@@ -1,5 +1,8 @@
+import { CheckIcon, LockIcon, PlayIcon } from "lucide-react";
 import Link from "next/link";
-import { CheckIcon, EmptyState, LockIcon, PageTitle, Ring } from "@/components/ui";
+import { EmptyState, PageHeader, StatusBadge, type Tone } from "@/components/kit";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Progress } from "@/components/ui/progress";
 import { requireOpenStudent } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { clock, fa } from "@/lib/format";
@@ -7,30 +10,30 @@ import { getExamStates, getTrackProgress, type CourseExam } from "@/lib/progress
 
 function ExamRow({ courseId, state }: { courseId: number; state: CourseExam }) {
   if (state.status === "none") return null;
-  const view: Record<Exclude<CourseExam["status"], "none">, { text: string; badge: string; label: string }> = {
-    locked: { text: "بعد از دیدن همه ویدیوها باز می‌شود", badge: "badge-quiet", label: "قفل" },
-    ready: { text: "آزمون تستی و عملی این بخش آماده است", badge: "badge-azure", label: "آماده" },
-    in_progress: { text: "آزمون را شروع کرده‌اید", badge: "badge-sun", label: "در حال انجام" },
-    pending_review: { text: "پاسخ‌های عملی شما در حال بررسی است", badge: "badge-sun", label: "در حال بررسی" },
-    passed: { text: `نمره نهایی: ٪${fa(state.percent ?? 0)}`, badge: "badge-grass", label: "قبول" },
-    failed: { text: "می‌توانید دوباره آزمون بدهید", badge: "badge-ember", label: "مردود" },
+  const view: Record<Exclude<CourseExam["status"], "none">, { text: string; tone: Tone; label: string }> = {
+    locked: { text: "بعد از دیدن همه ویدیوها باز می‌شود", tone: "neutral", label: "قفل" },
+    ready: { text: "آزمون تستی و عملی این بخش آماده است", tone: "info", label: "آماده" },
+    in_progress: { text: "آزمون را شروع کرده‌اید", tone: "warning", label: "در حال انجام" },
+    pending_review: { text: "پاسخ‌های عملی شما در حال بررسی است", tone: "warning", label: "در حال بررسی" },
+    passed: { text: `نمره نهایی: ٪${fa(state.percent ?? 0)}`, tone: "success", label: "قبول" },
+    failed: { text: "می‌توانید دوباره آزمون بدهید", tone: "danger", label: "مردود" },
   };
   const current = view[state.status];
   const inner = (
     <>
-      <span className="flex items-center gap-2 font-bold">
-        {state.status === "locked" && <LockIcon className="size-4 text-ink-soft" />}
+      <span className="flex items-center gap-2 font-medium">
+        {state.status === "locked" && <LockIcon className="size-4 text-muted-foreground" aria-hidden="true" />}
         آزمون پایان بخش
       </span>
-      <span className="flex items-center gap-2 text-sm text-ink-soft">
+      <span className="flex items-center gap-3 text-sm text-muted-foreground">
         <span className="hidden sm:inline">{current.text}</span>
-        <span className={`badge ${current.badge}`}>{current.label}</span>
+        <StatusBadge tone={current.tone}>{current.label}</StatusBadge>
       </span>
     </>
   );
-  const classes = "flex items-center justify-between gap-3 rounded-xl bg-mist px-4 py-3";
+  const classes = "mt-2 flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2.5 transition-colors";
   if (state.status === "locked") return <div className={classes}>{inner}</div>;
-  return <Link href={`/panel/exam/${courseId}`} className={`${classes} hover:bg-sky`}>{inner}</Link>;
+  return <Link href={`/panel/exam/${courseId}`} className={`${classes} hover:bg-accent`}>{inner}</Link>;
 }
 
 export default async function PathPage() {
@@ -39,53 +42,57 @@ export default async function PathPage() {
   const progress = getTrackProgress(user.id, user.track_id!);
   const exams = getExamStates(user.id, progress.courses);
   const hasVideos = progress.videoCount > 0;
+  const current = progress.courses.find((course) => course.videos.length > 0 && !course.allVideosDone) ?? progress.courses[0];
 
   return (
     <>
-      <PageTitle
+      <PageHeader
         title={`مسیر ${track.title}`}
-        hint={hasVideos ? `${fa(progress.completedCount)} از ${fa(progress.videoCount)} ویدیو کامل شده، ٪${fa(progress.percent)} از کل مسیر` : undefined}
+        description={hasVideos ? `${fa(progress.completedCount)} از ${fa(progress.videoCount)} ویدیو کامل شده، ٪${fa(progress.percent)} از کل مسیر` : undefined}
       />
       {!hasVideos ? (
-        <EmptyState title="ویدیوهای این مسیر به‌زودی اضافه می‌شوند" hint="به‌محض اضافه شدن، همین‌جا آن‌ها را می‌بینید." />
+        <EmptyState title="ویدیوهای این مسیر به‌زودی اضافه می‌شوند" description="به‌محض اضافه شدن، همین‌جا آن‌ها را می‌بینید." />
       ) : (
-        <ol className="space-y-5">
+        <Accordion type="multiple" defaultValue={current ? [String(current.id)] : []} className="grid gap-3">
           {progress.courses.map((course, index) => (
-            <li key={course.id} className="sheet p-5 sm:p-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-grass-4">بخش {fa(index + 1)}</p>
-                  <h2 className="display text-3xl text-marine">{course.title}</h2>
-                  {course.description && <p className="mt-1 text-sm text-ink-soft">{course.description}</p>}
-                </div>
-                <Ring value={course.percent} size={68} stroke={7} label={`${course.percent} درصد`}>
-                  <span className="text-sm font-bold">٪{fa(course.percent)}</span>
-                </Ring>
-              </div>
-
-              {course.videos.length === 0 ? (
-                <p className="mt-4 text-sm text-ink-soft">ویدیوهای این بخش هنوز اضافه نشده‌اند.</p>
-              ) : (
-                <ul className="mt-4 divide-y divide-line">
-                  {course.videos.map((video, videoIndex) => (
-                    <li key={video.id}>
-                      <Link href={`/panel/watch/${video.id}`} className="flex items-center gap-3 rounded-lg px-1 py-2.5 hover:bg-mist">
-                        <span className={`grid size-8 shrink-0 place-items-center rounded-lg text-sm font-bold ${video.completed ? "bg-grass-3 text-white" : "bg-grass-0 text-ink-soft"}`}>
-                          {video.completed ? <CheckIcon /> : fa(videoIndex + 1)}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate font-medium">{video.title}</span>
-                        {video.percent > 0 && !video.completed && <span className="text-xs font-bold text-azure">٪{fa(video.percent)}</span>}
-                        {video.duration > 0 && <span className="text-xs tabular-nums text-ink-soft">{clock(video.duration)}</span>}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div className="mt-4"><ExamRow courseId={course.id} state={exams.get(course.id)!} /></div>
-            </li>
+            <AccordionItem key={course.id} value={String(course.id)} className="rounded-xl border bg-card px-4 last:border-b">
+              <AccordionTrigger className="items-center gap-4 py-4 hover:no-underline">
+                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-sm font-semibold text-accent-foreground">
+                  {course.allVideosDone ? <CheckIcon className="size-4" aria-label="کامل شده" /> : fa(index + 1)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-base font-semibold">{course.title}</span>
+                  <span className="mt-1.5 flex items-center gap-3">
+                    <Progress value={course.percent} className="h-1 max-w-48" aria-hidden="true" />
+                    <span className="text-xs font-normal text-muted-foreground">٪{fa(course.percent)}</span>
+                  </span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="[&_a]:no-underline">
+                {course.description && <p className="mb-2 text-sm text-muted-foreground">{course.description}</p>}
+                {course.videos.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">ویدیوهای این بخش هنوز اضافه نشده‌اند.</p>
+                ) : (
+                  <ul>
+                    {course.videos.map((video) => (
+                      <li key={video.id}>
+                        <Link href={`/panel/watch/${video.id}`} className="flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-muted">
+                          <span className={`grid size-6 shrink-0 place-items-center rounded-full ${video.completed ? "bg-grass-3 text-white" : "bg-muted text-muted-foreground"}`}>
+                            {video.completed ? <CheckIcon className="size-3.5" aria-label="کامل" /> : <PlayIcon className="size-3 fill-current" aria-hidden="true" />}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{video.title}</span>
+                          {video.percent > 0 && !video.completed && <span className="text-xs font-semibold text-primary">٪{fa(video.percent)}</span>}
+                          {video.duration > 0 && <span className="text-xs tabular-nums text-muted-foreground">{clock(video.duration)}</span>}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <ExamRow courseId={course.id} state={exams.get(course.id)!} />
+              </AccordionContent>
+            </AccordionItem>
           ))}
-        </ol>
+        </Accordion>
       )}
     </>
   );

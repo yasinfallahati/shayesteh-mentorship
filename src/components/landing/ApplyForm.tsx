@@ -1,7 +1,12 @@
 "use client";
 
+import { CheckCircle2Icon } from "lucide-react";
 import { submitApplication } from "@/app/actions/public";
-import { FormMessage, FormPending, SubmitButton, useFormAction } from "@/components/forms";
+import { FormError, FormPending, SubmitButton, useFormAction } from "@/components/forms";
+import { Field } from "@/components/kit";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 
 const LEVELS = ["بدون تجربه", "کمی بلدم", "پروژه کوچک ساخته‌ام", "شاغل در حوزه نرم‌افزار"];
 const HOURS = ["کمتر از ۵ ساعت", "۵ تا ۱۰ ساعت", "۱۰ تا ۲۰ ساعت", "بیشتر از ۲۰ ساعت"];
@@ -11,16 +16,12 @@ export function ApplyForm({ tracks }: { tracks: { id: number; title: string }[] 
 
   if (state.ok) {
     return (
-      <div className="rounded-2xl bg-white p-8 text-ink" role="status">
-        <div className="mb-4 grid w-fit grid-cols-3 gap-1" aria-hidden="true">
-          {["#b4e8bd", "#62cf7a", "#27a24b", "#62cf7a", "#27a24b", "#116a35"].map((color, index) => (
-            <span key={index} className="size-5 rounded" style={{ background: color }} />
-          ))}
-        </div>
-        <h3 className="display text-3xl text-marine">
+      <div className="rounded-2xl bg-card p-8 text-card-foreground" role="status">
+        <CheckCircle2Icon className="size-9 text-grass-3" aria-hidden="true" />
+        <h3 className="mt-4 text-2xl">
           {state.message === "duplicate" ? "درخواست قبلی شما در صف بررسی است" : "درخواست شما ثبت شد"}
         </h3>
-        <p className="mt-2 text-ink-soft">
+        <p className="mt-2 text-muted-foreground">
           برای توضیح شرایط دوره با همین شماره تماس می‌گیریم. اگر شرایط را پذیرفتید، نام کاربری و رمز عبور برایتان
           ساخته می‌شود.
         </p>
@@ -29,34 +30,23 @@ export function ApplyForm({ tracks }: { tracks: { id: number; title: string }[] 
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-2xl bg-white p-6 text-ink sm:p-8">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="field-label" htmlFor="full_name">نام و نام خانوادگی</label>
-          <input id="full_name" name="full_name" required maxLength={80} autoComplete="name" className="input" />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="phone">شماره موبایل</label>
-          <input
-            id="phone"
-            name="phone"
-            required
-            dir="ltr"
-            inputMode="tel"
-            autoComplete="tel"
-            placeholder="09123456789"
-            className="input"
-          />
-        </div>
+    <form method="post" onSubmit={onSubmit} className="grid gap-5 rounded-2xl bg-card p-6 text-card-foreground sm:p-8">
+      <div className="grid gap-5 sm:grid-cols-2">
+        <Field id="full_name" label="نام و نام خانوادگی">
+          <Input id="full_name" name="full_name" required maxLength={80} autoComplete="name" className="h-11" />
+        </Field>
+        <Field id="phone" label="شماره موبایل">
+          <Input id="phone" name="phone" required dir="ltr" inputMode="tel" autoComplete="tel" placeholder="09123456789" className="h-11 text-left" />
+        </Field>
       </div>
 
-      <fieldset>
-        <legend className="field-label">کدام مسیر را می‌خواهید؟</legend>
+      <fieldset className="grid gap-1.5">
+        <legend className="mb-1.5 text-sm font-medium">کدام مسیر را می‌خواهید؟</legend>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {tracks.map((track, index) => (
             <label
               key={track.id}
-              className="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-[#c4d5e2] px-2 text-center text-sm font-semibold has-checked:border-grass-3 has-checked:bg-[#dcf5e1] has-checked:text-grass-4 has-focus-visible:outline-3 has-focus-visible:outline-azure"
+              className="flex min-h-11 cursor-pointer items-center justify-center rounded-lg border border-input px-2 text-center text-sm font-medium transition-colors hover:bg-muted has-checked:border-primary has-checked:bg-accent has-checked:text-accent-foreground has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
             >
               <input type="radio" name="track_id" value={track.id} required={index === 0} className="sr-only" />
               {track.title}
@@ -65,27 +55,24 @@ export function ApplyForm({ tracks }: { tracks: { id: number; title: string }[] 
         </div>
       </fieldset>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="field-label" htmlFor="level">سطح فعلی</label>
-          <select id="level" name="level" required defaultValue="" className="input">
-            <option value="" disabled>انتخاب کنید</option>
-            {LEVELS.map((level) => <option key={level}>{level}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="field-label" htmlFor="weekly_hours">زمان آزاد در هفته</label>
-          <select id="weekly_hours" name="weekly_hours" required defaultValue="" className="input">
-            <option value="" disabled>انتخاب کنید</option>
-            {HOURS.map((hours) => <option key={hours}>{hours}</option>)}
-          </select>
-        </div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <Field id="level" label="سطح فعلی">
+          <NativeSelect id="level" name="level" required defaultValue="" className="w-full [&_select]:h-11">
+            <NativeSelectOption value="" disabled>انتخاب کنید</NativeSelectOption>
+            {LEVELS.map((level) => <NativeSelectOption key={level}>{level}</NativeSelectOption>)}
+          </NativeSelect>
+        </Field>
+        <Field id="weekly_hours" label="زمان آزاد در هفته">
+          <NativeSelect id="weekly_hours" name="weekly_hours" required defaultValue="" className="w-full [&_select]:h-11">
+            <NativeSelectOption value="" disabled>انتخاب کنید</NativeSelectOption>
+            {HOURS.map((hours) => <NativeSelectOption key={hours}>{hours}</NativeSelectOption>)}
+          </NativeSelect>
+        </Field>
       </div>
 
-      <div>
-        <label className="field-label" htmlFor="goal">هدفتان از این دوره چیست؟ (اختیاری)</label>
-        <textarea id="goal" name="goal" maxLength={1000} className="input" />
-      </div>
+      <Field id="goal" label="هدفتان از این دوره چیست؟ (اختیاری)">
+        <Textarea id="goal" name="goal" maxLength={1000} rows={3} />
+      </Field>
 
       <div className="sr-only" aria-hidden="true">
         <label>
@@ -94,9 +81,9 @@ export function ApplyForm({ tracks }: { tracks: { id: number; title: string }[] 
         </label>
       </div>
 
-      <FormMessage state={state} />
+      <FormError message={state.error} />
       <FormPending.Provider value={pending}>
-        <SubmitButton className="btn btn-grass w-full" pendingLabel="در حال ثبت…">ثبت پیش‌ثبت‌نام</SubmitButton>
+        <SubmitButton size="lg" className="h-11 w-full" pendingLabel="در حال ثبت…">ثبت پیش‌ثبت‌نام</SubmitButton>
       </FormPending.Provider>
     </form>
   );

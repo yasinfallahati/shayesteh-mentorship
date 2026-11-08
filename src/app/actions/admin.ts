@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin, revokeOtherSessions, type User } from "@/lib/auth";
 import { db, getSettings, MEDIA_DIR, setSetting, VIDEO_DIR } from "@/lib/db";
 import { getPassPercent, getQuestions, percentOf, type Attempt } from "@/lib/exams";
-import { latinDigits } from "@/lib/format";
+import { latinDigits, tehranTimestamp } from "@/lib/format";
 import { integer, PASSWORD_HINT, text, USERNAME_HINT, USERNAME_PATTERN, type ActionState } from "@/lib/forms";
 import { generatePassword, hashPassword, verifyPassword } from "@/lib/passwords";
 import { DAY_MS, renewedEnd } from "@/lib/subscription";
@@ -73,7 +73,7 @@ export async function approveApplication(_: ActionState, form: FormData): Promis
       .prepare("UPDATE applications SET status = 'accepted', updated_at = ? WHERE id = ?")
       .run(now, application.id);
   })();
-  refresh();
+  // No revalidation here: it would swap the form out and lose the one-time password on screen.
   return { ok: true, message: "حساب هنرجو ساخته شد.", credentials: { username, password } };
 }
 
@@ -169,31 +169,93 @@ export async function toggleStudentActive(_: ActionState, form: FormData): Promi
   return { ok: true, message: active ? "حساب فعال شد." : "حساب غیرفعال شد." };
 }
 
+function isCourseTitleTaken(title: string, exceptId: number | null) {
+  return Boolean(db().prepare("SELECT id FROM courses WHERE title = ? AND id != ?").get(title, exceptId ?? 0));
+}
+
+function appendToTrack(trackId: number, courseId: number) {
+  const database = db();
+  const { next } = database
+    .prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM track_courses WHERE track_id = ?")
+    .get(trackId) as { next: number };
+  database
+    .prepare("INSERT OR IGNORE INTO track_courses (track_id, course_id, position) VALUES (?, ?, ?)")
+    .run(trackId, courseId, next);
+}
+
 export async function addCourse(_: ActionState, form: FormData): Promise<ActionState> {
   await requireAdmin();
   const title = text(form, "title", 100);
-  const trackId = integer(form, "track_id");
-  if (title.length < 2) return { error: "نام بخش را بنویسید." };
+  if (title.length < 2) return { error: "نام زبان را بنویسید." };
+  if (isCourseTitleTaken(title, null)) return { error: "زبانی با این نام قبلا ثبت شده است." };
   const database = db();
-  const { next } = database
-    .prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM courses WHERE track_id = ?")
-    .get(trackId) as { next: number };
-  database
-    .prepare("INSERT INTO courses (track_id, title, description, position) VALUES (?, ?, ?, ?)")
-    .run(trackId, title, text(form, "description", 1000), next);
+  const validTracks = (database.prepare("SELECT id FROM tracks").all() as { id: number }[]).map((track) => track.id);
+  const chosen = form.getAll("track_ids").map(Number).filter((id) => validTracks.includes(id));
+  database.transaction(() => {
+    const courseId = Number(
+      database.prepare("INSERT INTO courses (title, description) VALUES (?, ?)").run(title, text(form, "description", 1000))
+        .lastInsertRowid,
+    );
+    for (const trackId of chosen) appendToTrack(trackId, courseId);
+  })();
   refresh();
-  return { ok: true, message: "بخش اضافه شد." };
+  return { ok: true, message: "زبان اضافه شد." };
 }
 
 export async function updateCourse(_: ActionState, form: FormData): Promise<ActionState> {
   await requireAdmin();
+  const id = integer(form, "id");
   const title = text(form, "title", 100);
-  if (title.length < 2) return { error: "نام بخش را بنویسید." };
-  db()
-    .prepare("UPDATE courses SET title = ?, description = ? WHERE id = ?")
-    .run(title, text(form, "description", 1000), integer(form, "id"));
+  if (title.length < 2) return { error: "نام زبان را بنویسید." };
+  if (isCourseTitleTaken(title, id)) return { error: "زبانی با این نام قبلا ثبت شده است." };
+  db().prepare("UPDATE courses SET title = ?, description = ? WHERE id = ?").run(title, text(form, "description", 1000), id);
   refresh();
-  return { ok: true, message: "بخش ذخیره شد." };
+  return { ok: true, message: "زبان ذخیره شد." };
+}
+
+export async function attachCourseToTrack(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const trackId = integer(form, "track_id");
+  const courseId = integer(form, "course_id");
+  const database = db();
+  if (!trackId || !database.prepare("SELECT id FROM tracks WHERE id = ?").get(trackId)) return { error: "مسیر معتبر نیست." };
+  if (!courseId || !database.prepare("SELECT id FROM courses WHERE id = ?").get(courseId)) return { error: "یک زبان انتخاب کنید." };
+  appendToTrack(trackId, courseId);
+  refresh();
+  return { ok: true, message: "زبان به مسیر اضافه شد." };
+}
+
+export async function detachCourseFromTrack(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  db().prepare("DELETE FROM track_courses WHERE track_id = ? AND course_id = ?").run(integer(form, "track_id"), integer(form, "course_id"));
+  refresh();
+  return { ok: true, message: "زبان از مسیر برداشته شد." };
+}
+
+export async function moveCourseInTrack(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const trackId = integer(form, "track_id");
+  const courseId = integer(form, "course_id");
+  const direction = integer(form, "direction") ?? 1;
+  const database = db();
+  const row = database.prepare("SELECT position FROM track_courses WHERE track_id = ? AND course_id = ?").get(trackId, courseId) as
+    | { position: number }
+    | undefined;
+  if (!row) return {};
+  const neighbor = database
+    .prepare(
+      `SELECT course_id, position FROM track_courses WHERE track_id = ? AND position ${direction < 0 ? "<" : ">"} ?
+       ORDER BY position ${direction < 0 ? "DESC" : "ASC"} LIMIT 1`,
+    )
+    .get(trackId, row.position) as { course_id: number; position: number } | undefined;
+  if (!neighbor) return {};
+  const update = database.prepare("UPDATE track_courses SET position = ? WHERE track_id = ? AND course_id = ?");
+  database.transaction(() => {
+    update.run(neighbor.position, trackId, courseId);
+    update.run(row.position, trackId, neighbor.course_id);
+  })();
+  refresh();
+  return {};
 }
 
 export async function deleteCourse(_: ActionState, form: FormData): Promise<ActionState> {
@@ -204,49 +266,57 @@ export async function deleteCourse(_: ActionState, form: FormData): Promise<Acti
   database.prepare("DELETE FROM courses WHERE id = ?").run(id);
   removeVideoFiles(files.map((file) => file.file_name));
   refresh();
-  return { ok: true, message: "بخش حذف شد." };
-}
-
-function swapPosition(table: "courses" | "videos" | "questions", scope: string, id: number | null, direction: number) {
-  const database = db();
-  const row = database.prepare(`SELECT id, position, ${scope} AS scope FROM ${table} WHERE id = ?`).get(id) as
-    | { id: number; position: number; scope: number }
-    | undefined;
-  if (!row) return;
-  const comparison = direction < 0 ? "<" : ">";
-  const order = direction < 0 ? "DESC" : "ASC";
-  const neighbor = database
-    .prepare(`SELECT id, position FROM ${table} WHERE ${scope} = ? AND position ${comparison} ? ORDER BY position ${order} LIMIT 1`)
-    .get(row.scope, row.position) as { id: number; position: number } | undefined;
-  if (!neighbor) return;
-  const update = database.prepare(`UPDATE ${table} SET position = ? WHERE id = ?`);
-  database.transaction(() => {
-    update.run(neighbor.position, row.id);
-    update.run(row.position, neighbor.id);
-  })();
-}
-
-export async function moveCourse(_: ActionState, form: FormData): Promise<ActionState> {
-  await requireAdmin();
-  swapPosition("courses", "track_id", integer(form, "id"), integer(form, "direction") ?? 1);
-  refresh();
-  return {};
+  return { ok: true, message: "زبان حذف شد." };
 }
 
 export async function moveVideo(_: ActionState, form: FormData): Promise<ActionState> {
   await requireAdmin();
-  swapPosition("videos", "course_id", integer(form, "id"), integer(form, "direction") ?? 1);
+  const direction = integer(form, "direction") ?? 1;
+  const database = db();
+  const row = database.prepare("SELECT id, position, course_id FROM videos WHERE id = ?").get(integer(form, "id")) as
+    | { id: number; position: number; course_id: number }
+    | undefined;
+  if (!row) return {};
+  const neighbor = database
+    .prepare(
+      `SELECT id, position FROM videos WHERE course_id = ? AND position ${direction < 0 ? "<" : ">"} ?
+       ORDER BY position ${direction < 0 ? "DESC" : "ASC"} LIMIT 1`,
+    )
+    .get(row.course_id, row.position) as { id: number; position: number } | undefined;
+  if (!neighbor) return {};
+  const update = database.prepare("UPDATE videos SET position = ? WHERE id = ?");
+  database.transaction(() => {
+    update.run(neighbor.position, row.id);
+    update.run(row.position, neighbor.id);
+  })();
   refresh();
   return {};
 }
 
 export async function updateVideo(_: ActionState, form: FormData): Promise<ActionState> {
   await requireAdmin();
+  const id = integer(form, "id");
+  const courseId = integer(form, "course_id");
   const title = text(form, "title", 150);
   if (title.length < 2) return { error: "عنوان ویدیو را بنویسید." };
-  db()
-    .prepare("UPDATE videos SET title = ?, description = ? WHERE id = ?")
-    .run(title, text(form, "description", 2000), integer(form, "id"));
+  const database = db();
+  const video = database.prepare("SELECT course_id, position FROM videos WHERE id = ?").get(id) as
+    | { course_id: number; position: number }
+    | undefined;
+  if (!video) return { error: "ویدیو پیدا نشد." };
+  if (!courseId || !database.prepare("SELECT id FROM courses WHERE id = ?").get(courseId)) return { error: "زبان را انتخاب کنید." };
+  // A video moved to another language goes to the end of that language's list.
+  const position =
+    courseId === video.course_id
+      ? video.position
+      : (
+          database.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM videos WHERE course_id = ?").get(courseId) as {
+            next: number;
+          }
+        ).next;
+  database
+    .prepare("UPDATE videos SET title = ?, description = ?, course_id = ?, position = ? WHERE id = ?")
+    .run(title, text(form, "description", 2000), courseId, position, id);
   refresh();
   return { ok: true, message: "ویدیو ذخیره شد." };
 }
@@ -369,6 +439,54 @@ export async function gradeAttempt(_: ActionState, form: FormData): Promise<Acti
   })();
   refresh();
   return { ok: true, message: status === "passed" ? "نمره ثبت شد: قبول" : "نمره ثبت شد: مردود" };
+}
+
+export async function saveMeetup(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const id = integer(form, "id");
+  const title = text(form, "title", 120);
+  const location = text(form, "location", 300);
+  const time = /^(\d{2}):(\d{2})$/.exec(text(form, "time", 5));
+  if (title.length < 2) return { error: "عنوان جلسه را بنویسید." };
+  if (location.length < 2) return { error: "مکان جلسه را بنویسید." };
+  if (!time) return { error: "ساعت جلسه را انتخاب کنید." };
+
+  const startsAt = tehranTimestamp(
+    integer(form, "year") ?? 0,
+    integer(form, "month") ?? 0,
+    integer(form, "day") ?? 0,
+    Number(time[1]),
+    Number(time[2]),
+  );
+  if (startsAt === null) return { error: "این تاریخ در تقویم وجود ندارد." };
+  if (!id && startsAt < Date.now()) return { error: "تاریخ جلسه گذشته است. یک تاریخ آینده انتخاب کنید." };
+
+  const database = db();
+  const trackValue = text(form, "track_id", 10);
+  const trackId = trackValue ? Number(trackValue) : null;
+  if (trackId !== null && !database.prepare("SELECT id FROM tracks WHERE id = ?").get(trackId)) {
+    return { error: "مسیر معتبر نیست." };
+  }
+
+  const values = { title, startsAt, location, note: text(form, "note", 1000), trackId, id, now: Date.now() };
+  if (id) {
+    database
+      .prepare("UPDATE meetups SET title = @title, starts_at = @startsAt, location = @location, note = @note, track_id = @trackId WHERE id = @id")
+      .run(values);
+  } else {
+    database
+      .prepare("INSERT INTO meetups (title, starts_at, location, note, track_id, created_at) VALUES (@title, @startsAt, @location, @note, @trackId, @now)")
+      .run(values);
+  }
+  refresh();
+  return { ok: true, message: "جلسه ذخیره شد." };
+}
+
+export async function deleteMeetup(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  db().prepare("DELETE FROM meetups WHERE id = ?").run(integer(form, "id"));
+  refresh();
+  return { ok: true, message: "جلسه حذف شد." };
 }
 
 export async function savePaymentSettings(_: ActionState, form: FormData): Promise<ActionState> {

@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
   return (
-    <main className="grid min-h-svh place-items-center bg-[linear-gradient(180deg,#9fd3ff_0%,#e6f4ff_100%)] px-4 text-center">
+    <main className="grid min-h-svh place-items-center px-4 text-center">
       <div>
-        <h1 className="display text-5xl text-marine">این صفحه پیدا نشد</h1>
-        <p className="mt-3 text-ink-soft">نشانی را بررسی کنید یا به صفحه اصلی برگردید.</p>
-        <Link href="/" className="btn btn-primary mt-6">رفتن به صفحه اصلی</Link>
+        <h1 className="text-3xl">این صفحه پیدا نشد</h1>
+        <p className="mt-2 text-muted-foreground">نشانی را بررسی کنید یا به صفحه اصلی برگردید.</p>
+        <Button asChild size="lg" className="mt-6"><Link href="/">رفتن به صفحه اصلی</Link></Button>
       </div>
     </main>
   );

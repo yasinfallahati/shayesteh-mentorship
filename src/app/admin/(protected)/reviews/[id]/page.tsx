@@ -1,7 +1,11 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { gradeAttempt } from "@/app/actions/admin";
 import { ActionForm, SubmitButton } from "@/components/forms";
+import { Field, PageHeader } from "@/components/kit";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getPassPercent, type Attempt } from "@/lib/exams";
@@ -30,32 +34,37 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/admin/reviews" className="text-sm text-ink-soft underline">بازگشت به فهرست تصحیح</Link>
-      <h1 className="display mt-2 text-[2rem] text-marine">{attempt.full_name}، آزمون {attempt.course_title}</h1>
-      <p className="mb-5 text-sm text-ink-soft">
-        {attempt.submitted_at && `ثبت‌شده در ${faDateTime(attempt.submitted_at)}. `}
-        بخش تستی: {fa(attempt.mcq_earned)} از {fa(attempt.mcq_max)} نمره. نمره قبولی: ٪{fa(getPassPercent(attempt.exam_id))}
-      </p>
-      {!open && <p className="sheet mb-4 p-4 font-medium">این آزمون تصحیح شده است. نمره نهایی: ٪{fa(attempt.percent ?? 0)}</p>}
+      <PageHeader
+        title={`${attempt.full_name}، آزمون ${attempt.course_title}`}
+        back={{ href: "/admin/reviews", label: "بازگشت به فهرست تصحیح" }}
+        description={
+          <>
+            {attempt.submitted_at && `ثبت‌شده در ${faDateTime(attempt.submitted_at)}. `}
+            بخش تستی: {fa(attempt.mcq_earned)} از {fa(attempt.mcq_max)} نمره. نمره قبولی: ٪{fa(getPassPercent(attempt.exam_id))}
+          </>
+        }
+      />
+      {!open && <p className="mb-4 rounded-xl border bg-card p-4 font-medium">این آزمون تصحیح شده است. نمره نهایی: ٪{fa(attempt.percent ?? 0)}</p>}
       <ActionForm action={gradeAttempt}>
         <input type="hidden" name="id" value={attempt.id} />
         {answers.map((answer, index) => (
-          <section key={answer.id} className="sheet p-5">
-            <p className="whitespace-pre-wrap font-semibold" dir="auto">{fa(index + 1)}. {answer.prompt}</p>
-            <pre dir="ltr" className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-marine p-4 text-left text-sm text-white">
-              {answer.text_answer || "(بدون پاسخ)"}
-            </pre>
-            <div className="mt-3 flex items-center gap-2">
-              <label className="field-label mb-0" htmlFor={`score_${answer.id}`}>نمره از {fa(answer.points)}</label>
-              <input id={`score_${answer.id}`} name={`score_${answer.id}`} type="number" min={0} max={answer.points} required disabled={!open} defaultValue={answer.awarded ?? undefined} className="input w-24" />
-            </div>
-          </section>
+          <Card key={answer.id}>
+            <CardContent>
+              <p className="whitespace-pre-wrap font-semibold" dir="auto">{fa(index + 1)}. {answer.prompt}</p>
+              <pre dir="ltr" className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-pine p-4 text-left font-mono text-sm text-white">
+                {answer.text_answer || "(بدون پاسخ)"}
+              </pre>
+              <div className="mt-3 flex items-center gap-2">
+                <Label htmlFor={`score_${answer.id}`}>نمره از {fa(answer.points)}</Label>
+                <Input id={`score_${answer.id}`} name={`score_${answer.id}`} type="number" min={0} max={answer.points} required disabled={!open} defaultValue={answer.awarded ?? undefined} className="w-24" />
+              </div>
+            </CardContent>
+          </Card>
         ))}
-        <div>
-          <label className="field-label" htmlFor="reviewer_note">بازخورد برای هنرجو</label>
-          <textarea id="reviewer_note" name="reviewer_note" disabled={!open} defaultValue={attempt.reviewer_note} className="input" />
-        </div>
-        {open && <SubmitButton className="btn btn-grass" pendingLabel="در حال ثبت…">ثبت نمره نهایی</SubmitButton>}
+        <Field id="reviewer_note" label="بازخورد برای هنرجو">
+          <Textarea id="reviewer_note" name="reviewer_note" disabled={!open} defaultValue={attempt.reviewer_note} />
+        </Field>
+        {open && <SubmitButton className="justify-self-start" pendingLabel="در حال ثبت…">ثبت نمره نهایی</SubmitButton>}
       </ActionForm>
     </div>
   );

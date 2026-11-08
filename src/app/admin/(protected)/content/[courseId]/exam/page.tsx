@@ -1,7 +1,10 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteQuestion, saveExam, saveQuestion } from "@/app/actions/admin";
 import { ActionForm, SubmitButton } from "@/components/forms";
+import { Field, PageHeader, StatusBadge } from "@/components/kit";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getQuestions, type Question } from "@/lib/exams";
@@ -15,13 +18,12 @@ function QuestionFields({ examId, kind, question }: { examId: number; kind: "mcq
       {question && <input type="hidden" name="id" value={question.id} />}
       <input type="hidden" name="exam_id" value={examId} />
       <input type="hidden" name="kind" value={kind} />
-      <div>
-        <label className="field-label" htmlFor={`${prefix}-prompt`}>{kind === "mcq" ? "متن سوال" : "شرح تمرین عملی"}</label>
-        <textarea id={`${prefix}-prompt`} name="prompt" required dir="auto" defaultValue={question?.prompt} className="input" />
-      </div>
+      <Field id={`${prefix}-prompt`} label={kind === "mcq" ? "متن سوال" : "شرح تمرین عملی"}>
+        <Textarea id={`${prefix}-prompt`} name="prompt" required dir="auto" defaultValue={question?.prompt} />
+      </Field>
       {kind === "mcq" && (
         <fieldset>
-          <legend className="field-label">گزینه‌ها (گزینه درست را علامت بزنید)</legend>
+          <legend className="mb-1.5 text-sm font-medium">گزینه‌ها (گزینه درست را علامت بزنید)</legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {[0, 1, 2, 3].map((index) => (
               <div key={index} className="flex items-center gap-2">
@@ -32,19 +34,18 @@ function QuestionFields({ examId, kind, question }: { examId: number; kind: "mcq
                   required
                   defaultChecked={question?.correct_index === index}
                   aria-label={`گزینه ${"ABCD"[index]} درست است`}
-                  className="size-5 shrink-0 accent-[var(--color-grass-3)]"
+                  className="size-4 shrink-0 accent-[var(--primary)]"
                 />
-                <span className="font-bold text-ink-soft">{"ABCD"[index]}</span>
-                <input name={`option_${index}`} required dir="auto" defaultValue={options[index]} aria-label={`گزینه ${"ABCD"[index]}`} className="input" />
+                <span className="text-sm font-semibold text-muted-foreground">{"ABCD"[index]}</span>
+                <Input name={`option_${index}`} required dir="auto" defaultValue={options[index]} aria-label={`گزینه ${"ABCD"[index]}`} />
               </div>
             ))}
           </div>
         </fieldset>
       )}
-      <div className="w-32">
-        <label className="field-label" htmlFor={`${prefix}-points`}>نمره</label>
-        <input id={`${prefix}-points`} name="points" type="number" min={1} max={1000} required defaultValue={question?.points ?? (kind === "mcq" ? 1 : 10)} className="input" />
-      </div>
+      <Field id={`${prefix}-points`} label="نمره" className="w-28">
+        <Input id={`${prefix}-points`} name="points" type="number" min={1} max={1000} required defaultValue={question?.points ?? (kind === "mcq" ? 1 : 10)} />
+      </Field>
     </>
   );
 }
@@ -68,82 +69,80 @@ export default async function ExamAdminPage({ params }: { params: Promise<{ cour
 
   return (
     <>
-      <Link href={`/admin/content/${course.id}`} className="text-sm text-ink-soft underline">بازگشت به {course.title}</Link>
-      <h1 className="display mb-6 mt-2 text-[2rem] text-marine">آزمون {course.title}</h1>
+      <PageHeader title={`آزمون ${course.title}`} back={{ href: "/admin/content", label: "بازگشت به زبان‌ها و مسیرها" }} />
 
-      <section className="sheet p-5">
-        <h2 className="mb-3 font-bold">تنظیمات آزمون</h2>
-        <ActionForm action={saveExam} className="space-y-3">
-          <input type="hidden" name="id" value={exam.id} />
-          <div>
-            <label className="field-label" htmlFor="instructions">توضیحات قبل از شروع</label>
-            <textarea id="instructions" name="instructions" defaultValue={exam.instructions} className="input" />
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <div className="w-36">
-              <label className="field-label" htmlFor="time_limit_minutes">زمان (دقیقه)</label>
-              <input id="time_limit_minutes" name="time_limit_minutes" type="number" min={1} max={600} required defaultValue={exam.time_limit_minutes} className="input" />
+      <Card>
+        <CardHeader><CardTitle>تنظیمات آزمون</CardTitle></CardHeader>
+        <CardContent>
+          <ActionForm action={saveExam} className="grid gap-3">
+            <input type="hidden" name="id" value={exam.id} />
+            <Field id="instructions" label="توضیحات قبل از شروع"><Textarea id="instructions" name="instructions" defaultValue={exam.instructions} /></Field>
+            <div className="flex flex-wrap gap-3">
+              <Field id="time_limit_minutes" label="زمان (دقیقه)" className="w-36">
+                <Input id="time_limit_minutes" name="time_limit_minutes" type="number" min={1} max={600} required defaultValue={exam.time_limit_minutes} />
+              </Field>
+              <Field id="pass_percent" label="نمره قبولی (درصد)" className="w-36">
+                <Input id="pass_percent" name="pass_percent" type="number" min={1} max={100} required defaultValue={exam.pass_percent} />
+              </Field>
             </div>
-            <div className="w-36">
-              <label className="field-label" htmlFor="pass_percent">نمره قبولی (درصد)</label>
-              <input id="pass_percent" name="pass_percent" type="number" min={1} max={100} required defaultValue={exam.pass_percent} className="input" />
-            </div>
-          </div>
-          <label className="flex items-center gap-2 font-medium">
-            <input type="checkbox" name="is_published" defaultChecked={!!exam.is_published} className="size-5 accent-[var(--color-grass-3)]" />
-            آزمون برای هنرجوها منتشر شود
-          </label>
-          <SubmitButton>ذخیره تنظیمات</SubmitButton>
-        </ActionForm>
-      </section>
-
-      <section className="mt-5">
-        <h2 className="mb-2 font-bold">سوال‌ها ({fa(questions.length)} سوال، {fa(totalPoints)} نمره)</h2>
-        {questions.length === 0 ? (
-          <p className="sheet p-5 text-sm text-ink-soft">هنوز سوالی ثبت نشده است. از فرم‌های پایین اولین سوال را اضافه کنید.</p>
-        ) : (
-          <ol className="sheet divide-y divide-line">
-            {questions.map((question, index) => (
-              <li key={question.id} className="p-4">
-                <details>
-                  <summary className="flex items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                    <span className="min-w-0 flex-1 truncate font-semibold" dir="auto">{fa(index + 1)}. {question.prompt}</span>
-                    <span className={`badge ${question.kind === "mcq" ? "badge-azure" : "badge-sun"}`}>{question.kind === "mcq" ? "تستی" : "عملی"}</span>
-                    <span className="badge badge-quiet">{fa(question.points)} نمره</span>
-                    <span className="text-sm text-azure underline">ویرایش</span>
-                  </summary>
-                  <div className="mt-3 space-y-3">
-                    <ActionForm action={saveQuestion} className="space-y-3">
-                      <QuestionFields examId={exam.id} kind={question.kind} question={question} />
-                      <SubmitButton className="btn btn-quiet btn-sm">ذخیره سوال</SubmitButton>
-                    </ActionForm>
-                    <ActionForm action={deleteQuestion} className="" confirm="این سوال حذف شود؟">
-                      <input type="hidden" name="id" value={question.id} />
-                      <SubmitButton className="btn btn-danger btn-sm" pendingLabel="…">حذف سوال</SubmitButton>
-                    </ActionForm>
-                  </div>
-                </details>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-
-      <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <section className="sheet p-5">
-          <h2 className="mb-3 font-bold">افزودن سوال چهارگزینه‌ای</h2>
-          <ActionForm action={saveQuestion} resetOnSuccess className="space-y-3">
-            <QuestionFields examId={exam.id} kind="mcq" />
-            <SubmitButton>افزودن سوال تستی</SubmitButton>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" name="is_published" defaultChecked={!!exam.is_published} className="size-4 accent-[var(--primary)]" />
+              آزمون برای هنرجوها منتشر شود
+            </label>
+            <SubmitButton className="justify-self-start">ذخیره تنظیمات</SubmitButton>
           </ActionForm>
-        </section>
-        <section className="sheet self-start p-5">
-          <h2 className="mb-3 font-bold">افزودن سوال عملی</h2>
-          <ActionForm action={saveQuestion} resetOnSuccess className="space-y-3">
-            <QuestionFields examId={exam.id} kind="practical" />
-            <SubmitButton>افزودن سوال عملی</SubmitButton>
-          </ActionForm>
-        </section>
+        </CardContent>
+      </Card>
+
+      <h2 className="mb-2 mt-6 text-base font-semibold">سوال‌ها ({fa(questions.length)} سوال، {fa(totalPoints)} نمره)</h2>
+      {questions.length === 0 ? (
+        <p className="rounded-xl border border-dashed bg-card p-5 text-sm text-muted-foreground">هنوز سوالی ثبت نشده است. از فرم‌های پایین اولین سوال را اضافه کنید.</p>
+      ) : (
+        <ol className="divide-y rounded-xl border bg-card">
+          {questions.map((question, index) => (
+            <li key={question.id} className="p-4">
+              <details>
+                <summary className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 flex-1 truncate font-medium" dir="auto">{fa(index + 1)}. {question.prompt}</span>
+                  <StatusBadge tone={question.kind === "mcq" ? "info" : "warning"}>{question.kind === "mcq" ? "تستی" : "عملی"}</StatusBadge>
+                  <StatusBadge tone="neutral">{fa(question.points)} نمره</StatusBadge>
+                  <span className="text-sm font-medium text-primary">ویرایش</span>
+                </summary>
+                <div className="mt-3 grid gap-3">
+                  <ActionForm action={saveQuestion} className="grid gap-3">
+                    <QuestionFields examId={exam.id} kind={question.kind} question={question} />
+                    <SubmitButton variant="outline" size="sm" className="justify-self-start">ذخیره سوال</SubmitButton>
+                  </ActionForm>
+                  <ActionForm action={deleteQuestion} className="" confirm="این سوال حذف شود؟">
+                    <input type="hidden" name="id" value={question.id} />
+                    <SubmitButton variant="ghost" size="sm" className="text-destructive hover:text-destructive">حذف سوال</SubmitButton>
+                  </ActionForm>
+                </div>
+              </details>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>افزودن سوال چهارگزینه‌ای</CardTitle></CardHeader>
+          <CardContent>
+            <ActionForm action={saveQuestion} resetOnSuccess className="grid gap-3">
+              <QuestionFields examId={exam.id} kind="mcq" />
+              <SubmitButton className="justify-self-start">افزودن سوال تستی</SubmitButton>
+            </ActionForm>
+          </CardContent>
+        </Card>
+        <Card className="self-start">
+          <CardHeader><CardTitle>افزودن سوال عملی</CardTitle></CardHeader>
+          <CardContent>
+            <ActionForm action={saveQuestion} resetOnSuccess className="grid gap-3">
+              <QuestionFields examId={exam.id} kind="practical" />
+              <SubmitButton className="justify-self-start">افزودن سوال عملی</SubmitButton>
+            </ActionForm>
+          </CardContent>
+        </Card>
       </div>
     </>
   );

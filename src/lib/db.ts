@@ -73,12 +73,17 @@ CREATE INDEX IF NOT EXISTS payments_status ON payments(status, created_at);
 
 CREATE TABLE IF NOT EXISTS courses (
   id INTEGER PRIMARY KEY,
-  track_id INTEGER NOT NULL REFERENCES tracks(id),
   title TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  position INTEGER NOT NULL
+  description TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS courses_track ON courses(track_id, position);
+
+CREATE TABLE IF NOT EXISTS track_courses (
+  track_id INTEGER NOT NULL REFERENCES tracks(id),
+  course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (track_id, course_id)
+);
+CREATE INDEX IF NOT EXISTS track_courses_course ON track_courses(course_id);
 
 CREATE TABLE IF NOT EXISTS videos (
   id INTEGER PRIMARY KEY,
@@ -162,6 +167,17 @@ CREATE TABLE IF NOT EXISTS answers (
   awarded INTEGER,
   PRIMARY KEY (attempt_id, question_id)
 );
+
+CREATE TABLE IF NOT EXISTS meetups (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  starts_at INTEGER NOT NULL,
+  location TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  track_id INTEGER REFERENCES tracks(id),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS meetups_start ON meetups(starts_at);
 `;
 
 const DEFAULT_TRACKS: [string, string, string, string[]][] = [
@@ -200,8 +216,43 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   support_phone: "",
 };
 
+/**
+ * Courses used to belong to one track. They are now a shared library linked to
+ * tracks through track_courses, so older databases are rebuilt once. Foreign keys
+ * stay off during the swap or dropping the old table would cascade to the videos.
+ */
+export function migrateCourseTracks(database: Database.Database) {
+  const hasTrackColumn = () =>
+    (database.pragma("table_info(courses)") as { name: string }[]).some((column) => column.name === "track_id");
+  if (!hasTrackColumn()) return;
+  database.pragma("foreign_keys = OFF");
+  try {
+    database
+      .transaction(() => {
+        if (!hasTrackColumn()) return;
+        database.exec(`
+          INSERT OR IGNORE INTO track_courses (track_id, course_id, position)
+            SELECT track_id, id, position FROM courses;
+          DROP INDEX IF EXISTS courses_track;
+          CREATE TABLE courses_new (
+            id INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT ''
+          );
+          INSERT INTO courses_new (id, title, description) SELECT id, title, description FROM courses;
+          DROP TABLE courses;
+          ALTER TABLE courses_new RENAME TO courses;
+        `);
+      })
+      .immediate();
+  } finally {
+    database.pragma("foreign_keys = ON");
+  }
+}
+
 function migrate(database: Database.Database) {
   database.exec(SCHEMA);
+  migrateCourseTracks(database);
   database
     .transaction(() => {
       const insertSetting = database.prepare(
@@ -216,12 +267,17 @@ function migrate(database: Database.Database) {
         const insertTrack = database.prepare(
           "INSERT INTO tracks (slug, title, summary, position) VALUES (?, ?, ?, ?)",
         );
-        const insertCourse = database.prepare(
-          "INSERT INTO courses (track_id, title, position) VALUES (?, ?, ?)",
+        const findCourse = database.prepare("SELECT id FROM courses WHERE title = ?");
+        const insertCourse = database.prepare("INSERT INTO courses (title) VALUES (?)");
+        const linkCourse = database.prepare(
+          "INSERT INTO track_courses (track_id, course_id, position) VALUES (?, ?, ?)",
         );
         DEFAULT_TRACKS.forEach(([slug, title, summary, courses], index) => {
           const trackId = insertTrack.run(slug, title, summary, index).lastInsertRowid;
-          courses.forEach((course, position) => insertCourse.run(trackId, course, position));
+          courses.forEach((course, position) => {
+            const existing = findCourse.get(course) as { id: number } | undefined;
+            linkCourse.run(trackId, existing?.id ?? insertCourse.run(course).lastInsertRowid, position);
+          });
         });
       }
 
@@ -234,9 +290,9 @@ function migrate(database: Database.Database) {
         }
         database
           .prepare(
-            "INSERT INTO users (role, username, password_hash, full_name, created_at) VALUES ('admin', 'admin', ?, 'مدیر سامانه', ?)",
+            "INSERT INTO users (role, username, password_hash, full_name, created_at) VALUES ('admin', ?, ?, 'مدیر سامانه', ?)",
           )
-          .run(hashPasswordSync(password), Date.now());
+          .run(process.env.ADMIN_USERNAME || "mentor", hashPasswordSync(password), Date.now());
       }
     })
     .immediate();

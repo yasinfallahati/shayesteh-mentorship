@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Ring } from "@/components/kit";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { fa } from "@/lib/format";
-import { Ring } from "./ui";
 
 export function PathProgress({
   overall,
@@ -16,18 +17,15 @@ export function PathProgress({
   const [selected, setSelected] = useState("all");
   const value = selected === "all" ? overall : courses.find((course) => String(course.id) === selected)?.percent ?? 0;
   return (
-    <div className="flex h-full flex-col items-center text-center">
-      <h2 className="display text-2xl text-marine">پیشرفت مسیر یادگیری</h2>
+    <div className="flex flex-col items-center">
+      <Ring value={value} size={156} stroke={12} label={`${value} درصد پیشرفت`}>
+        <span className="text-4xl font-bold">٪{fa(value)}</span>
+      </Ring>
       <label className="sr-only" htmlFor="path-select">انتخاب بخش</label>
-      <select id="path-select" value={selected} onChange={(event) => setSelected(event.target.value)} className="input mt-3 max-w-56 text-center text-sm font-semibold">
-        <option value="all">کل مسیر {trackTitle}</option>
-        {courses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
-      </select>
-      <div className="mt-5">
-        <Ring value={value} size={190} stroke={15} label={`${value} درصد پیشرفت`}>
-          <span className="display text-6xl text-marine">٪{fa(value)}</span>
-        </Ring>
-      </div>
+      <NativeSelect id="path-select" value={selected} onChange={(event) => setSelected(event.target.value)} className="mt-5 w-full max-w-56">
+        <NativeSelectOption value="all">کل مسیر {trackTitle}</NativeSelectOption>
+        {courses.map((course) => <NativeSelectOption key={course.id} value={course.id}>{course.title}</NativeSelectOption>)}
+      </NativeSelect>
     </div>
   );
 }

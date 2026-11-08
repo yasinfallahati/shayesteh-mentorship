@@ -1,8 +1,26 @@
 "use client";
 
+import { Loader2Icon, TimerIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { submitExam } from "@/app/actions/student";
+import { StatusBadge } from "@/components/kit";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import { clock, fa } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 export interface RunnerQuestion {
   id: number;
@@ -29,6 +47,7 @@ export function ExamRunner({
   const [answers, setAnswers] = useState<Answers>({});
   const [index, setIndex] = useState(0);
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [isPending, startTransition] = useTransition();
   const submitted = useRef(false);
 
@@ -88,28 +107,30 @@ export function ExamRunner({
     question.kind === "mcq" ? answers[question.id]?.selected !== undefined : Boolean(answers[question.id]?.text?.trim());
 
   const question = questions[index];
-  const unanswered = questions.filter((candidate) => !isAnswered(candidate)).length;
+  const answeredCount = questions.filter(isAnswered).length;
+  const unanswered = questions.length - answeredCount;
   const lowTime = remaining !== null && remaining < 120;
-
-  const finish = () => {
-    const warning = unanswered > 0 ? `${fa(unanswered)} سوال بی‌پاسخ مانده است. آزمون را ثبت می‌کنید؟` : "آزمون را ثبت می‌کنید؟ بعد از ثبت، پاسخ‌ها قابل تغییر نیستند.";
-    if (window.confirm(warning)) send(answers);
-  };
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <h1 className="display text-3xl text-marine">{title}</h1>
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <h1 className="text-xl">{title}</h1>
         <div
-          className={`rounded-xl px-4 py-1.5 text-lg font-bold tabular-nums ${lowTime ? "bg-ember-soft text-[#a32a1f]" : "bg-white text-marine"}`}
+          className={cn(
+            "flex items-center gap-2 rounded-lg border bg-card px-3 py-1 font-semibold tabular-nums",
+            lowTime && "border-transparent bg-danger-soft text-danger",
+          )}
           role="timer"
           aria-label="زمان باقی‌مانده"
         >
+          <TimerIcon className="size-4" aria-hidden="true" />
           {remaining === null ? "" : clock(remaining)}
         </div>
       </div>
 
-      <nav className="mb-5 flex flex-wrap gap-1.5" aria-label="سوال‌ها">
+      <Progress value={(answeredCount / questions.length) * 100} className="mb-4 h-1.5" aria-label="پیشرفت پاسخ‌دهی" />
+
+      <nav className="mb-4 flex flex-wrap gap-1.5" aria-label="سوال‌ها">
         {questions.map((candidate, position) => (
           <button
             key={candidate.id}
@@ -117,80 +138,95 @@ export function ExamRunner({
             onClick={() => setIndex(position)}
             aria-current={position === index ? "step" : undefined}
             aria-label={`سوال ${position + 1}${isAnswered(candidate) ? "، پاسخ داده شده" : ""}`}
-            className={`grid size-9 place-items-center rounded-lg text-sm font-bold ${
+            className={cn(
+              "grid size-8 place-items-center rounded-md border text-sm font-medium transition-colors",
               position === index
-                ? "bg-marine text-white"
+                ? "border-primary bg-primary text-primary-foreground"
                 : isAnswered(candidate)
-                  ? "bg-grass-2 text-marine"
-                  : "bg-white text-ink-soft"
-            }`}
+                  ? "border-transparent bg-accent text-accent-foreground"
+                  : "bg-card text-muted-foreground hover:bg-muted",
+            )}
           >
             {fa(position + 1)}
           </button>
         ))}
       </nav>
 
-      <section className="sheet p-5 sm:p-8">
-        <div className="mb-3 flex gap-2">
-          <span className={question.kind === "mcq" ? "badge badge-azure" : "badge badge-sun"}>
-            {question.kind === "mcq" ? "تستی" : "عملی"}
-          </span>
-          <span className="badge badge-quiet">{fa(question.points)} نمره</span>
-        </div>
-        <p className="whitespace-pre-wrap text-lg font-semibold" dir="auto">{fa(index + 1)}. {question.prompt}</p>
-
-        {question.kind === "mcq" ? (
-          <div className="mt-5 space-y-2.5" role="radiogroup" aria-label="گزینه‌ها">
-            {question.options.map((option, optionIndex) => {
-              const selected = answers[question.id]?.selected === optionIndex;
-              return (
-                <button
-                  key={optionIndex}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => update(question.id, { selected: optionIndex })}
-                  className={`flex w-full items-center gap-3 rounded-xl border p-3 text-start transition-colors ${
-                    selected ? "border-azure bg-[#e1eeff]" : "border-line bg-white hover:border-ink-soft"
-                  }`}
-                >
-                  <span className={`grid size-8 shrink-0 place-items-center rounded-full text-sm font-bold ${selected ? "bg-azure text-white" : "bg-grass-0 text-ink-soft"}`}>
-                    {"ABCD"[optionIndex]}
-                  </span>
-                  <bdi>{option}</bdi>
-                </button>
-              );
-            })}
+      <Card>
+        <CardContent className="p-1 sm:p-3">
+          <div className="mb-3 flex gap-2">
+            <StatusBadge tone={question.kind === "mcq" ? "info" : "warning"}>{question.kind === "mcq" ? "تستی" : "عملی"}</StatusBadge>
+            <StatusBadge tone="neutral">{fa(question.points)} نمره</StatusBadge>
           </div>
-        ) : (
-          <div className="mt-5">
-            <label className="field-label" htmlFor={`answer-${question.id}`}>پاسخ شما (کد، توضیح یا لینک پروژه)</label>
-            <textarea
-              id={`answer-${question.id}`}
-              dir="ltr"
-              rows={12}
-              spellCheck={false}
-              value={answers[question.id]?.text ?? ""}
-              onChange={(event) => update(question.id, { text: event.target.value })}
-              className="input font-mono text-sm"
-              style={{ textAlign: "left" }}
-            />
-          </div>
-        )}
-      </section>
+          <p className="whitespace-pre-wrap text-lg font-semibold" dir="auto">{fa(index + 1)}. {question.prompt}</p>
 
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <button type="button" className="btn btn-quiet" disabled={index === 0} onClick={() => setIndex(index - 1)}>
-          سوال قبلی
-        </button>
+          {question.kind === "mcq" ? (
+            <div className="mt-5 grid gap-2" role="radiogroup" aria-label="گزینه‌ها">
+              {question.options.map((option, optionIndex) => {
+                const selected = answers[question.id]?.selected === optionIndex;
+                return (
+                  <button
+                    key={optionIndex}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => update(question.id, { selected: optionIndex })}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-lg border p-3 text-start transition-colors",
+                      selected ? "border-primary bg-accent" : "hover:bg-muted",
+                    )}
+                  >
+                    <span className={cn("grid size-7 shrink-0 place-items-center rounded-md text-sm font-semibold", selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                      {"ABCD"[optionIndex]}
+                    </span>
+                    <bdi>{option}</bdi>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-5 grid gap-1.5">
+              <Label htmlFor={`answer-${question.id}`}>پاسخ شما (کد، توضیح یا لینک پروژه)</Label>
+              <Textarea
+                id={`answer-${question.id}`}
+                dir="ltr"
+                rows={12}
+                spellCheck={false}
+                value={answers[question.id]?.text ?? ""}
+                onChange={(event) => update(question.id, { text: event.target.value })}
+                className="text-left font-mono text-sm"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <Button variant="outline" disabled={index === 0} onClick={() => setIndex(index - 1)}>سوال قبلی</Button>
         {index < questions.length - 1 ? (
-          <button type="button" className="btn btn-primary" onClick={() => setIndex(index + 1)}>سوال بعدی</button>
+          <Button onClick={() => setIndex(index + 1)}>سوال بعدی</Button>
         ) : (
-          <button type="button" className="btn btn-grass" disabled={isPending} onClick={finish}>
-            {isPending ? "در حال ثبت…" : "ثبت آزمون"}
-          </button>
+          <Button disabled={isPending} onClick={() => setConfirming(true)}>
+            {isPending && <Loader2Icon className="animate-spin" aria-hidden="true" />}
+            ثبت آزمون
+          </Button>
         )}
       </div>
+
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>آزمون را ثبت می‌کنید؟</AlertDialogTitle>
+            <AlertDialogDescription>
+              {unanswered > 0 ? `${fa(unanswered)} سوال بی‌پاسخ مانده است. ` : ""}بعد از ثبت، پاسخ‌ها قابل تغییر نیستند.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ادامه آزمون</AlertDialogCancel>
+            <AlertDialogAction onClick={() => send(answers)}>ثبت نهایی</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

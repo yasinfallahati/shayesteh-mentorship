@@ -1,6 +1,8 @@
 import { changeAdminPassword, removeCardImage, savePaymentSettings, uploadCardImage } from "@/app/actions/admin";
 import { ActionForm, CopyButton, SubmitButton } from "@/components/forms";
-import { PageTitle } from "@/components/ui";
+import { Field, PageHeader } from "@/components/kit";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { requireAdmin } from "@/lib/auth";
 import { getSettings } from "@/lib/db";
 
@@ -9,75 +11,69 @@ export default async function AdminSettingsPage() {
   const settings = getSettings();
   return (
     <>
-      <PageTitle title="تنظیمات" />
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="sheet p-6">
-          <h2 className="mb-4 font-bold">شهریه و شماره کارت</h2>
-          <ActionForm action={savePaymentSettings}>
-            <div>
-              <label className="field-label" htmlFor="monthly_price">شهریه ماهانه (تومان)</label>
-              <input id="monthly_price" name="monthly_price" required dir="ltr" inputMode="numeric" defaultValue={settings.monthly_price} className="input" />
-            </div>
-            <div>
-              <label className="field-label" htmlFor="card_number">شماره کارت</label>
-              <div className="flex gap-2">
-                <input id="card_number" name="card_number" dir="ltr" inputMode="numeric" defaultValue={settings.card_number} className="input" />
-                {settings.card_number && <CopyButton value={settings.card_number} className="btn btn-quiet" />}
+      <PageHeader title="تنظیمات" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="self-start">
+          <CardHeader><CardTitle>شهریه و شماره کارت</CardTitle></CardHeader>
+          <CardContent>
+            <ActionForm action={savePaymentSettings}>
+              <Field id="monthly_price" label="شهریه ماهانه (تومان)">
+                <Input id="monthly_price" name="monthly_price" required dir="ltr" inputMode="numeric" defaultValue={settings.monthly_price} className="text-left" />
+              </Field>
+              <Field id="card_number" label="شماره کارت">
+                <div className="flex gap-2">
+                  <Input id="card_number" name="card_number" dir="ltr" inputMode="numeric" defaultValue={settings.card_number} className="text-left" />
+                  {settings.card_number && <CopyButton value={settings.card_number} size="default" />}
+                </div>
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field id="card_holder" label="نام صاحب کارت"><Input id="card_holder" name="card_holder" defaultValue={settings.card_holder} /></Field>
+                <Field id="card_bank" label="بانک"><Input id="card_bank" name="card_bank" defaultValue={settings.card_bank} /></Field>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="field-label" htmlFor="card_holder">نام صاحب کارت</label>
-                <input id="card_holder" name="card_holder" defaultValue={settings.card_holder} className="input" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="card_bank">بانک</label>
-                <input id="card_bank" name="card_bank" defaultValue={settings.card_bank} className="input" />
-              </div>
-            </div>
-            <div>
-              <label className="field-label" htmlFor="support_phone">شماره پشتیبانی (اختیاری)</label>
-              <input id="support_phone" name="support_phone" dir="ltr" defaultValue={settings.support_phone} className="input" />
-            </div>
-            <SubmitButton>ذخیره تنظیمات پرداخت</SubmitButton>
-          </ActionForm>
-        </section>
-
-        <div className="space-y-5">
-          <section className="sheet p-6">
-            <h2 className="mb-4 font-bold">تصویر کارت بانکی</h2>
-            {settings.card_image && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={`/api/media/card?v=${settings.card_image}`} alt="تصویر فعلی کارت" className="mb-4 max-h-52 rounded-xl" />
-            )}
-            <ActionForm action={uploadCardImage} resetOnSuccess>
-              <div>
-                <label className="field-label" htmlFor="image">انتخاب تصویر (JPG، PNG یا WEBP تا ۵ مگابایت)</label>
-                <input id="image" name="image" type="file" required accept="image/jpeg,image/png,image/webp" className="input py-2.5 text-sm" />
-              </div>
-              <SubmitButton pendingLabel="در حال آپلود…">آپلود تصویر کارت</SubmitButton>
+              <Field id="support_phone" label="شماره پشتیبانی (اختیاری)">
+                <Input id="support_phone" name="support_phone" dir="ltr" defaultValue={settings.support_phone} className="text-left" />
+              </Field>
+              <SubmitButton className="justify-self-start">ذخیره تنظیمات پرداخت</SubmitButton>
             </ActionForm>
-            {settings.card_image && (
-              <ActionForm action={removeCardImage} className="mt-3" confirm="تصویر کارت حذف شود؟">
-                <SubmitButton className="btn btn-danger btn-sm">حذف تصویر</SubmitButton>
+          </CardContent>
+        </Card>
+
+        <div className="grid content-start gap-4">
+          <Card>
+            <CardHeader><CardTitle>تصویر کارت بانکی</CardTitle></CardHeader>
+            <CardContent>
+              {settings.card_image && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`/api/media/card?v=${settings.card_image}`} alt="تصویر فعلی کارت" className="mb-4 max-h-52 rounded-lg" />
+              )}
+              <ActionForm action={uploadCardImage} resetOnSuccess>
+                <Field id="image" label="انتخاب تصویر" hint="JPG، PNG یا WEBP تا ۵ مگابایت">
+                  <Input id="image" name="image" type="file" required accept="image/jpeg,image/png,image/webp" />
+                </Field>
+                <SubmitButton className="justify-self-start" pendingLabel="در حال آپلود…">آپلود تصویر کارت</SubmitButton>
               </ActionForm>
-            )}
-          </section>
+              {settings.card_image && (
+                <ActionForm action={removeCardImage} className="mt-2" confirm="تصویر کارت حذف شود؟">
+                  <SubmitButton variant="ghost" size="sm" className="text-destructive hover:text-destructive">حذف تصویر</SubmitButton>
+                </ActionForm>
+              )}
+            </CardContent>
+          </Card>
 
-          <section className="sheet p-6">
-            <h2 className="mb-4 font-bold">رمز سوپرادمین</h2>
-            <ActionForm action={changeAdminPassword} resetOnSuccess>
-              <div>
-                <label className="field-label" htmlFor="current_password">رمز فعلی</label>
-                <input id="current_password" name="current_password" type="password" required dir="ltr" autoComplete="current-password" className="input" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="new_password">رمز جدید (دست‌کم ۱۲ کاراکتر)</label>
-                <input id="new_password" name="new_password" type="password" required minLength={12} dir="ltr" autoComplete="new-password" className="input" />
-              </div>
-              <SubmitButton>تغییر رمز سوپرادمین</SubmitButton>
-            </ActionForm>
-          </section>
+          <Card>
+            <CardHeader><CardTitle>رمز سوپرادمین</CardTitle></CardHeader>
+            <CardContent>
+              <ActionForm action={changeAdminPassword} resetOnSuccess>
+                <Field id="current_password" label="رمز فعلی">
+                  <Input id="current_password" name="current_password" type="password" required dir="ltr" autoComplete="current-password" className="text-left" />
+                </Field>
+                <Field id="new_password" label="رمز جدید" hint="دست‌کم ۱۲ کاراکتر">
+                  <Input id="new_password" name="new_password" type="password" required minLength={12} dir="ltr" autoComplete="new-password" className="text-left" />
+                </Field>
+                <SubmitButton className="justify-self-start">تغییر رمز سوپرادمین</SubmitButton>
+              </ActionForm>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </>

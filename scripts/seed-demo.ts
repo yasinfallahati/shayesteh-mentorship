@@ -6,28 +6,29 @@
  *   demo          active subscription, front-end track, a year of activity
  *   demo.grace    subscription ended 4 days ago, inside the 10-day grace period
  *   demo.blocked  grace period is over, panel is disabled
+ *   demo.peer1-4  other front-end students, so the leaderboard has competition
+ *   demo.peer5    front-end student whose panel is disabled, so it stays off the leaderboard
  */
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { db, setSetting, VIDEO_DIR } from "../src/lib/db";
-import { addDays, tehranDay } from "../src/lib/format";
+import { addDays, jalaliParts, tehranDay, tehranTimestamp } from "../src/lib/format";
 import { hashPasswordSync } from "../src/lib/passwords";
 import { DAY_MS } from "../src/lib/subscription";
 
 const database = db();
-if (database.prepare("SELECT id FROM users WHERE username = 'demo'").get()) {
-  console.log("Demo data already exists.");
-  process.exit(0);
-}
-
 const now = Date.now();
 const hash = hashPasswordSync("demo12345");
 const trackId = (slug: string) =>
   (database.prepare("SELECT id FROM tracks WHERE slug = ?").get(slug) as { id: number }).id;
 const courseId = (track: number, title: string) =>
-  (database.prepare("SELECT id FROM courses WHERE track_id = ? AND title = ?").get(track, title) as { id: number }).id;
+  (
+    database
+      .prepare("SELECT c.id FROM courses c JOIN track_courses tc ON tc.course_id = c.id WHERE tc.track_id = ? AND c.title = ?")
+      .get(track, title) as { id: number }
+  ).id;
 
 function sampleVideo(seconds: number) {
   const name = `${randomBytes(16).toString("hex")}.mp4`;
@@ -66,6 +67,50 @@ function markWatched(user: number, video: number, percent: number, seconds: numb
        VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
     )
     .run(user, video, buckets, percent, seconds, percent >= 90 ? now : null, now);
+}
+
+function addPeers() {
+  if (database.prepare("SELECT id FROM users WHERE username = 'demo.peer1'").get()) return;
+  const videos = database
+    .prepare(
+      `SELECT v.id FROM videos v JOIN track_courses tc ON tc.course_id = v.course_id
+       WHERE tc.track_id = ? ORDER BY tc.position, v.position`,
+    )
+    .all(trackId("frontend")) as { id: number }[];
+  const today = tehranDay(now);
+  const insertDay = database.prepare("INSERT INTO activity_days (user_id, day, seconds, exams) VALUES (?, ?, ?, 0)");
+  const peers: [string, string, string, number, number, number][] = [
+    ["demo.peer1", "مریم کاظمی", "09120000021", 5, 4200, 20],
+    ["demo.peer2", "امیر حسینی", "09120000022", 2, 7800, 20],
+    ["demo.peer3", "نیلوفر شریفی", "09120000023", 4, 1500, 20],
+    ["demo.peer4", "کیان مرادی", "09120000024", 1, 600, 20],
+    ["demo.peer5", "پدرام نوری", "09120000025", 6, 9000, -30],
+  ];
+  for (const [username, name, phone, watched, dailySeconds, daysLeft] of peers) {
+    const student = addStudent(username, name, phone, trackId("frontend"), now + daysLeft * DAY_MS);
+    videos.slice(0, watched).forEach((video) => markWatched(student, video.id, 100, 1200));
+    for (let index = 0; index < 28; index += 3) insertDay.run(student, addDays(today, -index), dailySeconds);
+  }
+}
+
+function addMeetups() {
+  if (database.prepare("SELECT id FROM meetups LIMIT 1").get()) return;
+  const insert = database.prepare(
+    "INSERT INTO meetups (title, starts_at, location, note, track_id, created_at) VALUES (?, ?, 'تهران، دفتر شرکت (نمایشی)', ?, ?, ?)",
+  );
+  const at = (daysAhead: number) => {
+    const date = jalaliParts(now + daysAhead * DAY_MS);
+    return tehranTimestamp(date.year, date.month, date.day, 17, 0);
+  };
+  insert.run("جلسه حضوری همه مسیرها", at(4), "لپ‌تاپ خود را همراه بیاورید.", null, now);
+  insert.run("رفع اشکال ری‌اکت", at(18), "", trackId("frontend"), now);
+}
+
+if (database.prepare("SELECT id FROM users WHERE username = 'demo'").get()) {
+  addPeers();
+  addMeetups();
+  console.log("Demo data already exists. Leaderboard students and sessions are in place.");
+  process.exit(0);
 }
 
 const frontend = trackId("frontend");
@@ -116,6 +161,9 @@ const addApplication = database.prepare(
 );
 addApplication.run("مهدی کریمی", "09120000011", trackId("ai"), "کمی بلدم", "۱۰ تا ۲۰ ساعت", "می‌خواهم وارد حوزه هوش مصنوعی شوم.", now - 7_200_000, now);
 addApplication.run("الهام صادقی", "09120000012", frontend, "بدون تجربه", "۵ تا ۱۰ ساعت", "", now - 90_000_000, now);
+
+addPeers();
+addMeetups();
 
 setSetting("card_number", "6037000000000000");
 setSetting("card_holder", "کارت نمایشی");

@@ -1,5 +1,6 @@
+import { ChevronLeftIcon } from "lucide-react";
 import Link from "next/link";
-import { PageTitle } from "@/components/ui";
+import { PageHeader, StatusBadge, type Tone } from "@/components/kit";
 import { requireAdmin, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { fa } from "@/lib/format";
@@ -18,31 +19,34 @@ export default async function AdminHomePage() {
     { href: "/admin/payments", label: "واریز در انتظار تایید", hint: "هنرجو واریز را اعلام کرده", value: count("SELECT COUNT(*) AS total FROM payments WHERE status = 'pending'") },
     { href: "/admin/reviews", label: "آزمون عملی برای تصحیح", hint: "منتظر نمره شما", value: count("SELECT COUNT(*) AS total FROM attempts WHERE status = 'pending_review'") },
   ];
-  const status = [
-    { label: "اشتراک فعال", value: phases.active, filter: "active" },
-    { label: "در مهلت ۱۰ روزه", value: phases.grace, filter: "grace" },
-    { label: "پنل غیرفعال", value: phases.blocked, filter: "blocked" },
+  const status: { label: string; value: number; filter: string; tone: Tone }[] = [
+    { label: "اشتراک فعال", value: phases.active, filter: "active", tone: "success" },
+    { label: "در مهلت ۱۰ روزه", value: phases.grace, filter: "grace", tone: "warning" },
+    { label: "پنل غیرفعال", value: phases.blocked, filter: "blocked", tone: "danger" },
   ];
 
   return (
     <>
-      <PageTitle title="نمای کلی" />
-      <h2 className="mb-3 font-bold">کارهای امروز</h2>
-      <div className="grid gap-4 md:grid-cols-3">
+      <PageHeader title="نمای کلی" />
+      <h2 className="mb-3 text-base font-semibold">کارهای امروز</h2>
+      <div className="grid gap-3 md:grid-cols-3">
         {todo.map((item) => (
-          <Link key={item.href} href={item.href} className={`rounded-2xl p-5 transition-colors ${item.value ? "bg-marine text-white hover:bg-marine-2" : "sheet"}`}>
-            <p className={`display text-6xl ${item.value ? "text-sun" : "text-ink-soft"}`}>{fa(item.value)}</p>
-            <p className="mt-1 font-bold">{item.label}</p>
-            <p className={`text-sm ${item.value ? "text-[#c9dcec]" : "text-ink-soft"}`}>{item.hint}</p>
+          <Link key={item.href} href={item.href} className={`group rounded-xl border p-5 transition-colors ${item.value ? "border-transparent bg-pine text-white hover:bg-pine-2" : "bg-card hover:bg-muted"}`}>
+            <div className="flex items-start justify-between">
+              <p className={`text-4xl font-bold ${item.value ? "text-grass-2" : "text-muted-foreground"}`}>{fa(item.value)}</p>
+              <ChevronLeftIcon className="size-5 opacity-50 transition-transform group-hover:-translate-x-0.5" aria-hidden="true" />
+            </div>
+            <p className="mt-2 font-semibold">{item.label}</p>
+            <p className={`text-sm ${item.value ? "text-[#d3e6dd]" : "text-muted-foreground"}`}>{item.hint}</p>
           </Link>
         ))}
       </div>
-      <h2 className="mb-3 mt-8 font-bold">وضعیت هنرجوها</h2>
-      <div className="grid gap-4 md:grid-cols-3">
+      <h2 className="mb-3 mt-8 text-base font-semibold">وضعیت هنرجوها</h2>
+      <div className="grid gap-3 md:grid-cols-3">
         {status.map((item) => (
-          <Link key={item.filter} href={`/admin/students?phase=${item.filter}`} className="sheet p-5 hover:border-ink-soft">
-            <p className="display text-5xl text-marine">{fa(item.value)}</p>
-            <p className="mt-1 font-medium text-ink-soft">{item.label}</p>
+          <Link key={item.filter} href={`/admin/students?phase=${item.filter}`} className="rounded-xl border bg-card p-5 transition-colors hover:bg-muted">
+            <p className="text-3xl font-bold">{fa(item.value)}</p>
+            <div className="mt-2"><StatusBadge tone={item.tone}>{item.label}</StatusBadge></div>
           </Link>
         ))}
       </div>

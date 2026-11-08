@@ -1,85 +1,181 @@
+import { ArrowDownIcon, ArrowUpIcon, Trash2Icon, XIcon } from "lucide-react";
 import Link from "next/link";
-import { addCourse, deleteCourse, moveCourse } from "@/app/actions/admin";
+import { addCourse, attachCourseToTrack, deleteCourse, detachCourseFromTrack, moveCourseInTrack, updateCourse } from "@/app/actions/admin";
 import { ActionForm, SubmitButton } from "@/components/forms";
-import { PageTitle } from "@/components/ui";
+import { Field, PageHeader, StatusBadge } from "@/components/kit";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { fa } from "@/lib/format";
 
-export default async function ContentPage({ searchParams }: { searchParams: Promise<{ track?: string }> }) {
+interface CourseRow {
+  id: number;
+  title: string;
+  description: string;
+  videos: number;
+  questions: number;
+  published: number | null;
+}
+
+export default async function ContentPage() {
   await requireAdmin();
-  const { track } = await searchParams;
   const database = db();
   const tracks = database.prepare("SELECT id, title FROM tracks ORDER BY position").all() as { id: number; title: string }[];
-  const currentId = tracks.find((item) => item.id === Number(track))?.id ?? tracks[0].id;
   const courses = database
     .prepare(
       `SELECT c.id, c.title, c.description,
               (SELECT COUNT(*) FROM videos v WHERE v.course_id = c.id) AS videos,
               (SELECT COUNT(*) FROM questions q JOIN exams e ON e.id = q.exam_id WHERE e.course_id = c.id) AS questions,
               (SELECT is_published FROM exams e WHERE e.course_id = c.id) AS published
-       FROM courses c WHERE c.track_id = ? ORDER BY c.position, c.id`,
+       FROM courses c ORDER BY c.title`,
     )
-    .all(currentId) as { id: number; title: string; description: string; videos: number; questions: number; published: number | null }[];
+    .all() as CourseRow[];
+  const links = database.prepare("SELECT track_id, course_id FROM track_courses ORDER BY position").all() as { track_id: number; course_id: number }[];
+
+  const hiddenFields = (trackId: number, courseId: number) => (
+    <>
+      <input type="hidden" name="track_id" value={trackId} />
+      <input type="hidden" name="course_id" value={courseId} />
+    </>
+  );
 
   return (
     <>
-      <PageTitle title="محتوا و آزمون" hint="هر مسیر از چند بخش (مثلا هر زبان برنامه‌نویسی) تشکیل شده و هر بخش ویدیوها و آزمون خودش را دارد." />
-      <div className="mb-4 flex flex-wrap gap-2">
-        {tracks.map((item) => (
-          <Link key={item.id} href={`/admin/content?track=${item.id}`} className={`btn btn-sm ${item.id === currentId ? "bg-marine text-white" : "btn-quiet"}`}>
-            {item.title}
-          </Link>
-        ))}
+      <PageHeader title="زبان‌ها و مسیرها" description="هر زبان یک بار ساخته می‌شود. بعد مشخص می‌کنید هر مسیر به کدام زبان‌ها و به چه ترتیبی دسترسی داشته باشد." />
+
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>ترتیب زبان‌های هر مسیر</CardTitle>
+            <CardDescription>هنرجو زبان‌ها را به همین ترتیب در مسیرش می‌بیند.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue={String(tracks[0].id)} className="gap-4">
+              <TabsList className="h-auto flex-wrap">
+                {tracks.map((track) => <TabsTrigger key={track.id} value={String(track.id)}>{track.title}</TabsTrigger>)}
+              </TabsList>
+              {tracks.map((track) => {
+                const inTrack = links.filter((link) => link.track_id === track.id).map((link) => courses.find((course) => course.id === link.course_id)!);
+                const available = courses.filter((course) => !inTrack.some((item) => item.id === course.id));
+                return (
+                  <TabsContent key={track.id} value={String(track.id)} className="grid gap-3">
+                    {inTrack.length === 0 ? (
+                      <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">هنوز زبانی به این مسیر وصل نشده است.</p>
+                    ) : (
+                      <ol className="divide-y rounded-lg border">
+                        {inTrack.map((course, index) => (
+                          <li key={course.id} className="flex items-center gap-2 p-2.5">
+                            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-accent text-sm font-semibold text-accent-foreground">{fa(index + 1)}</span>
+                            <span className="min-w-0 flex-1 truncate font-medium">{course.title}</span>
+                            <ActionForm action={moveCourseInTrack} className="">
+                              {hiddenFields(track.id, course.id)}
+                              <input type="hidden" name="direction" value="-1" />
+                              <SubmitButton variant="ghost" size="icon-sm" aria-label={`بردن ${course.title} به بالا`} disabled={index === 0}><ArrowUpIcon /></SubmitButton>
+                            </ActionForm>
+                            <ActionForm action={moveCourseInTrack} className="">
+                              {hiddenFields(track.id, course.id)}
+                              <input type="hidden" name="direction" value="1" />
+                              <SubmitButton variant="ghost" size="icon-sm" aria-label={`بردن ${course.title} به پایین`} disabled={index === inTrack.length - 1}><ArrowDownIcon /></SubmitButton>
+                            </ActionForm>
+                            <ActionForm action={detachCourseFromTrack} className="" confirm={`«${course.title}» از مسیر ${track.title} برداشته شود؟`} confirmDetail="ویدیوها و نمره‌ها پاک نمی‌شوند، ولی هنرجوهای این مسیر دیگر به این زبان دسترسی ندارند.">
+                              {hiddenFields(track.id, course.id)}
+                              <SubmitButton variant="ghost" size="icon-sm" aria-label={`برداشتن ${course.title} از مسیر`} className="text-destructive hover:text-destructive"><XIcon /></SubmitButton>
+                            </ActionForm>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                    {available.length > 0 && (
+                      <ActionForm action={attachCourseToTrack} className="flex gap-2">
+                        <input type="hidden" name="track_id" value={track.id} />
+                        <label className="sr-only" htmlFor={`attach-${track.id}`}>زبان برای افزودن به {track.title}</label>
+                        <NativeSelect id={`attach-${track.id}`} name="course_id" required defaultValue="" className="w-full">
+                          <NativeSelectOption value="" disabled>افزودن زبان به این مسیر</NativeSelectOption>
+                          {available.map((course) => <NativeSelectOption key={course.id} value={course.id}>{course.title}</NativeSelectOption>)}
+                        </NativeSelect>
+                        <SubmitButton variant="outline">افزودن</SubmitButton>
+                      </ActionForm>
+                    )}
+                  </TabsContent>
+                );
+              })}
+            </Tabs>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4">
+          <Card>
+            <CardHeader><CardTitle>افزودن زبان جدید</CardTitle></CardHeader>
+            <CardContent>
+              <ActionForm action={addCourse} resetOnSuccess className="grid gap-3">
+                <Field id="title" label="نام زبان یا مهارت"><Input id="title" name="title" required minLength={2} placeholder="مثلا پایتون" /></Field>
+                <Field id="description" label="توضیح کوتاه (اختیاری)"><Input id="description" name="description" /></Field>
+                <fieldset>
+                  <legend className="mb-1.5 text-sm font-medium">در کدام مسیرها باشد؟</legend>
+                  <div className="flex flex-wrap gap-x-5 gap-y-2">
+                    {tracks.map((track) => (
+                      <label key={track.id} className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="track_ids" value={track.id} className="size-4 accent-[var(--primary)]" />
+                        {track.title}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <SubmitButton className="justify-self-start">افزودن زبان</SubmitButton>
+              </ActionForm>
+            </CardContent>
+          </Card>
+
+          <section>
+            <h2 className="mb-2 text-base font-semibold">همه زبان‌ها ({fa(courses.length)})</h2>
+            <ul className="divide-y rounded-xl border bg-card">
+              {courses.map((course) => {
+                const usedIn = tracks.filter((track) => links.some((link) => link.track_id === track.id && link.course_id === course.id));
+                return (
+                  <li key={course.id} className="p-4">
+                    <details>
+                      <summary className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="min-w-0 flex-1">
+                          <span className="font-semibold">{course.title}</span>
+                          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                            <span>{fa(course.videos)} ویدیو</span>
+                            {usedIn.map((track) => <StatusBadge key={track.id} tone="neutral">{track.title}</StatusBadge>)}
+                            {usedIn.length === 0 && <StatusBadge tone="warning">در هیچ مسیری نیست</StatusBadge>}
+                            <StatusBadge tone={course.published ? "success" : "neutral"}>
+                              {course.published ? `آزمون، ${fa(course.questions)} سوال` : "بدون آزمون"}
+                            </StatusBadge>
+                          </span>
+                        </span>
+                        <span className="text-sm font-medium text-primary">ویرایش</span>
+                      </summary>
+                      <div className="mt-3 grid gap-3">
+                        <ActionForm action={updateCourse} className="grid gap-3">
+                          <input type="hidden" name="id" value={course.id} />
+                          <Field id={`title-${course.id}`} label="نام"><Input id={`title-${course.id}`} name="title" defaultValue={course.title} required /></Field>
+                          <Field id={`desc-${course.id}`} label="توضیح کوتاه"><Textarea id={`desc-${course.id}`} name="description" defaultValue={course.description} rows={2} /></Field>
+                          <SubmitButton variant="outline" size="sm" className="justify-self-start">ذخیره زبان</SubmitButton>
+                        </ActionForm>
+                        <div className="flex flex-wrap gap-1 border-t pt-3">
+                          <Button asChild variant="ghost" size="sm"><Link href={`/admin/content/${course.id}/exam`}>سوال‌ها و آزمون</Link></Button>
+                          <ActionForm action={deleteCourse} className="" confirm={`«${course.title}» حذف شود؟`} confirmDetail="این زبان از همه مسیرها برداشته می‌شود و ویدیوها، آزمون و نمره‌هایش برای همیشه پاک می‌شوند.">
+                            <input type="hidden" name="id" value={course.id} />
+                            <SubmitButton variant="ghost" size="sm" className="text-destructive hover:text-destructive"><Trash2Icon aria-hidden="true" />حذف زبان</SubmitButton>
+                          </ActionForm>
+                        </div>
+                      </div>
+                    </details>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </div>
       </div>
-
-      <ul className="space-y-2">
-        {courses.map((course, index) => (
-          <li key={course.id} className="sheet flex flex-wrap items-center justify-between gap-3 p-4">
-            <Link href={`/admin/content/${course.id}`} className="min-w-0 flex-1">
-              <span className="font-bold underline-offset-4 hover:underline">{fa(index + 1)}. {course.title}</span>
-              <span className="mt-0.5 flex flex-wrap gap-2 text-xs text-ink-soft">
-                <span>{fa(course.videos)} ویدیو</span>
-                <span className={`badge ${course.published ? "badge-grass" : "badge-quiet"}`}>
-                  {course.published ? `آزمون منتشرشده، ${fa(course.questions)} سوال` : "آزمون منتشر نشده"}
-                </span>
-              </span>
-            </Link>
-            <div className="flex items-center gap-1.5">
-              <ActionForm action={moveCourse} className="">
-                <input type="hidden" name="id" value={course.id} />
-                <input type="hidden" name="direction" value="-1" />
-                <SubmitButton className="btn btn-quiet btn-sm" pendingLabel="…"><span aria-label="بردن به بالا">بالا</span></SubmitButton>
-              </ActionForm>
-              <ActionForm action={moveCourse} className="">
-                <input type="hidden" name="id" value={course.id} />
-                <input type="hidden" name="direction" value="1" />
-                <SubmitButton className="btn btn-quiet btn-sm" pendingLabel="…"><span aria-label="بردن به پایین">پایین</span></SubmitButton>
-              </ActionForm>
-              <ActionForm action={deleteCourse} className="" confirm={`بخش «${course.title}» با همه ویدیوها، آزمون و نمره‌هایش برای همیشه حذف شود؟`}>
-                <input type="hidden" name="id" value={course.id} />
-                <SubmitButton className="btn btn-danger btn-sm" pendingLabel="…">حذف</SubmitButton>
-              </ActionForm>
-            </div>
-          </li>
-        ))}
-      </ul>
-
-      <section className="sheet mt-5 p-5">
-        <h2 className="mb-3 font-bold">افزودن بخش جدید</h2>
-        <ActionForm action={addCourse} resetOnSuccess className="grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
-          <input type="hidden" name="track_id" value={currentId} />
-          <div>
-            <label className="field-label" htmlFor="title">نام بخش</label>
-            <input id="title" name="title" required minLength={2} className="input" />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="description">توضیح کوتاه (اختیاری)</label>
-            <input id="description" name="description" className="input" />
-          </div>
-          <SubmitButton>افزودن بخش</SubmitButton>
-        </ActionForm>
-      </section>
     </>
   );
 }

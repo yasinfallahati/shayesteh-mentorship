@@ -64,9 +64,10 @@ export async function login(_: ActionState, form: FormData): Promise<ActionState
     return { error: "تلاش‌های ناموفق زیاد شد. ۱۵ دقیقه دیگر دوباره وارد شوید." };
   }
 
-  const user = db()
-    .prepare("SELECT * FROM users WHERE username = ? AND role = 'student'")
-    .get(username) as User | undefined;
+  const user = db().prepare("SELECT * FROM users WHERE username = ?").get(username) as User | undefined;
+  if (user?.role === "admin" && !hit("admin:all", 40, 15 * MINUTE)) {
+    return { error: "تلاش‌های ناموفق زیاد شد. ۱۵ دقیقه دیگر دوباره وارد شوید." };
+  }
   decoyHash ??= await hashPassword("decoy-password");
   const valid = await verifyPassword(password, user?.password_hash ?? decoyHash);
   if (!user || !valid) return { error: "نام کاربری یا رمز عبور درست نیست." };
@@ -76,29 +77,10 @@ export async function login(_: ActionState, form: FormData): Promise<ActionState
 
   clearHits(key);
   await startSession(user);
-  redirect("/panel");
-}
-
-export async function adminLogin(_: ActionState, form: FormData): Promise<ActionState> {
-  const ip = await clientIp();
-  if (!hit(`admin:${ip}`, 5, 15 * MINUTE) || !hit("admin:all", 40, 15 * MINUTE)) {
-    return { error: "تلاش‌های ناموفق زیاد شد. ۱۵ دقیقه دیگر دوباره امتحان کنید." };
-  }
-  const admin = db().prepare("SELECT * FROM users WHERE role = 'admin'").get() as User;
-  if (!(await verifyPassword(text(form, "password", 200), admin.password_hash))) {
-    return { error: "رمز سوپرادمین درست نیست." };
-  }
-  clearHits(`admin:${ip}`);
-  await startSession(admin);
-  redirect("/admin");
+  redirect(user.role === "admin" ? "/admin" : "/panel");
 }
 
 export async function logout() {
   await endSession();
   redirect("/login");
-}
-
-export async function adminLogout() {
-  await endSession();
-  redirect("/admin/login");
 }

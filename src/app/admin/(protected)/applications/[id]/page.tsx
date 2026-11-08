@@ -1,7 +1,14 @@
+import { PhoneIcon } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { approveApplication, updateApplication } from "@/app/actions/admin";
 import { ActionForm, SubmitButton } from "@/components/forms";
+import { Field, PageHeader } from "@/components/kit";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { faDateTime } from "@/lib/format";
@@ -41,83 +48,88 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
 
   return (
     <>
-      <Link href="/admin/applications" className="text-sm text-ink-soft underline">بازگشت به پیش‌ثبت‌نام‌ها</Link>
-      <div className="mb-6 mt-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="display text-[2rem] text-marine">{application.full_name}</h1>
-        <a href={`tel:${application.phone}`} className="btn btn-primary" dir="ltr">{application.phone}</a>
-      </div>
+      <PageHeader
+        title={application.full_name}
+        back={{ href: "/admin/applications", label: "بازگشت به پیش‌ثبت‌نام‌ها" }}
+        action={
+          <Button asChild>
+            <a href={`tel:${application.phone}`}>
+              <PhoneIcon aria-hidden="true" />
+              <span dir="ltr">{application.phone}</span>
+            </a>
+          </Button>
+        }
+      />
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="sheet p-6">
-          <dl className="grid grid-cols-2 gap-4">
-            {facts.map(([label, value]) => (
-              <div key={label}><dt className="text-xs text-ink-soft">{label}</dt><dd className="font-semibold">{value}</dd></div>
-            ))}
-          </dl>
-          {application.goal && (
-            <div className="mt-4 border-t border-line pt-4">
-              <p className="text-xs text-ink-soft">هدف متقاضی</p>
-              <p className="whitespace-pre-wrap">{application.goal}</p>
-            </div>
-          )}
-
-          {application.status !== "accepted" && (
-            <ActionForm action={updateApplication} className="mt-5 space-y-3 border-t border-line pt-5">
-              <input type="hidden" name="id" value={application.id} />
-              <div>
-                <label className="field-label" htmlFor="status">وضعیت</label>
-                <select id="status" name="status" defaultValue={application.status} className="input">
-                  <option value="new">جدید</option>
-                  <option value="contacted">تماس گرفته شد</option>
-                  <option value="rejected">رد شد</option>
-                </select>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="self-start">
+          <CardHeader><CardTitle>اطلاعات متقاضی</CardTitle></CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-2 gap-4">
+              {facts.map(([label, value]) => (
+                <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-medium">{value}</dd></div>
+              ))}
+            </dl>
+            {application.goal && (
+              <div className="mt-4 border-t pt-4">
+                <p className="text-xs text-muted-foreground">هدف متقاضی</p>
+                <p className="whitespace-pre-wrap">{application.goal}</p>
               </div>
-              <div>
-                <label className="field-label" htmlFor="admin_note">یادداشت تماس</label>
-                <textarea id="admin_note" name="admin_note" defaultValue={application.admin_note} className="input" />
-              </div>
-              <SubmitButton className="btn btn-quiet">ذخیره وضعیت</SubmitButton>
-            </ActionForm>
-          )}
-        </section>
-
-        <section className="sheet p-6">
-          <h2 className="display text-2xl text-marine">تایید و ساخت حساب</h2>
-          {application.status === "accepted" ? (
-            <p className="mt-2 text-ink-soft">
-              برای این متقاضی حساب ساخته شده است.{" "}
-              {student && <Link href={`/admin/students/${student.id}`} className="font-bold underline">مشاهده هنرجو</Link>}
-            </p>
-          ) : (
-            <>
-              <p className="mt-1 text-sm text-ink-soft">بعد از اینکه متقاضی شرایط را پذیرفت این فرم را ثبت کنید. اشتراک از همین لحظه شروع می‌شود.</p>
-              <ActionForm action={approveApplication} className="mt-4 space-y-3" confirm="حساب این هنرجو ساخته شود؟">
+            )}
+            {application.status !== "accepted" && (
+              <ActionForm action={updateApplication} className="mt-5 grid gap-3 border-t pt-5">
                 <input type="hidden" name="id" value={application.id} />
-                <div>
-                  <label className="field-label" htmlFor="username">نام کاربری</label>
-                  <input id="username" name="username" required dir="ltr" defaultValue={application.phone} autoComplete="off" className="input" />
-                </div>
-                <div>
-                  <label className="field-label" htmlFor="password">رمز عبور</label>
-                  <input id="password" name="password" required dir="ltr" defaultValue={generatePassword()} autoComplete="off" className="input" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="field-label" htmlFor="track_id">مسیر</label>
-                    <select id="track_id" name="track_id" defaultValue={application.track_id} className="input">
-                      {tracks.map((track) => <option key={track.id} value={track.id}>{track.title}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="field-label" htmlFor="months">مدت اشتراک (ماه)</label>
-                    <input id="months" name="months" type="number" min={1} max={24} defaultValue={1} required className="input" />
-                  </div>
-                </div>
-                <SubmitButton className="btn btn-grass w-full" pendingLabel="در حال ساخت…">تایید ثبت‌نام و ساخت حساب</SubmitButton>
+                <Field id="status" label="وضعیت">
+                  <NativeSelect id="status" name="status" defaultValue={application.status} className="w-full">
+                    <NativeSelectOption value="new">جدید</NativeSelectOption>
+                    <NativeSelectOption value="contacted">تماس گرفته شد</NativeSelectOption>
+                    <NativeSelectOption value="rejected">رد شد</NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+                <Field id="admin_note" label="یادداشت تماس">
+                  <Textarea id="admin_note" name="admin_note" defaultValue={application.admin_note} />
+                </Field>
+                <SubmitButton variant="outline" className="justify-self-start">ذخیره وضعیت</SubmitButton>
               </ActionForm>
-            </>
-          )}
-        </section>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="self-start">
+          <CardHeader>
+            <CardTitle>تایید و ساخت حساب</CardTitle>
+            {application.status !== "accepted" && <CardDescription>بعد از اینکه متقاضی شرایط را پذیرفت این فرم را ثبت کنید. اشتراک از همین لحظه شروع می‌شود.</CardDescription>}
+          </CardHeader>
+          <CardContent>
+            {application.status === "accepted" ? (
+              <p className="text-muted-foreground">
+                برای این متقاضی حساب ساخته شده است.{" "}
+                {student && <Link href={`/admin/students/${student.id}`} className="font-semibold text-foreground underline underline-offset-4">مشاهده هنرجو</Link>}
+              </p>
+            ) : (
+              <ActionForm action={approveApplication} className="grid gap-3" confirm="حساب این هنرجو ساخته شود؟" confirmDetail="اشتراک از همین لحظه شروع می‌شود.">
+                <input type="hidden" name="id" value={application.id} />
+                <Field id="username" label="نام کاربری">
+                  <Input id="username" name="username" required dir="ltr" defaultValue={application.phone} autoComplete="off" className="text-left" />
+                </Field>
+                <Field id="password" label="رمز عبور">
+                  <Input id="password" name="password" required dir="ltr" defaultValue={generatePassword()} autoComplete="off" className="text-left" />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field id="track_id" label="مسیر">
+                    <NativeSelect id="track_id" name="track_id" defaultValue={application.track_id} className="w-full">
+                      {tracks.map((track) => <NativeSelectOption key={track.id} value={track.id}>{track.title}</NativeSelectOption>)}
+                    </NativeSelect>
+                  </Field>
+                  <Field id="months" label="مدت اشتراک (ماه)">
+                    <Input id="months" name="months" type="number" min={1} max={24} defaultValue={1} required />
+                  </Field>
+                </div>
+                <SubmitButton size="lg" className="w-full" pendingLabel="در حال ساخت…">تایید ثبت‌نام و ساخت حساب</SubmitButton>
+              </ActionForm>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </>
   );

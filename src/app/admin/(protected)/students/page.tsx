@@ -1,78 +1,118 @@
+import { SearchIcon } from "lucide-react";
 import Link from "next/link";
-import { EmptyState, PageTitle } from "@/components/ui";
-import { requireAdmin, type User } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { fa, faDate } from "@/lib/format";
-import { getTrackProgress } from "@/lib/progress";
-import { subscriptionState, type SubscriptionPhase } from "@/lib/subscription";
+import { EmptyState, PageHeader, StatusBadge, type Tone } from "@/components/kit";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { requireAdmin } from "@/lib/auth";
+import { daysAgoLabel, fa, faDate, studyTime } from "@/lib/format";
+import { getStudentOverview, INACTIVE_DAYS, type StudentOverview } from "@/lib/students";
+import type { SubscriptionPhase } from "@/lib/subscription";
 
-const PHASE_LABEL: Record<SubscriptionPhase, [string, string]> = {
-  active: ["فعال", "badge-grass"],
-  grace: ["در مهلت", "badge-sun"],
-  blocked: ["پنل غیرفعال", "badge-ember"],
+const PHASE_LABEL: Record<SubscriptionPhase, [string, Tone]> = {
+  active: ["فعال", "success"],
+  grace: ["در مهلت", "warning"],
+  blocked: ["پنل غیرفعال", "danger"],
 };
 
-const FILTERS: [string, string][] = [["", "همه"], ["active", "فعال"], ["grace", "در مهلت"], ["blocked", "پنل غیرفعال"]];
+const FILTERS: { value: string; label: string; match: (student: StudentOverview) => boolean }[] = [
+  { value: "", label: "همه", match: () => true },
+  { value: "active", label: "اشتراک فعال", match: (student) => student.state.phase === "active" },
+  { value: "grace", label: "در مهلت", match: (student) => student.state.phase === "grace" },
+  { value: "blocked", label: "پنل غیرفعال", match: (student) => student.state.phase === "blocked" },
+  { value: "inactive", label: `بی‌فعالیت ${fa(INACTIVE_DAYS)} روز`, match: (student) => student.inactive },
+];
 
 export default async function StudentsPage({ searchParams }: { searchParams: Promise<{ phase?: string; q?: string }> }) {
   await requireAdmin();
   const { phase = "", q = "" } = await searchParams;
   const now = Date.now();
-  const search = `%${q.trim()}%`;
-  const students = (
-    db()
-      .prepare(
-        `SELECT u.*, t.title AS track_title FROM users u JOIN tracks t ON t.id = u.track_id
-         WHERE u.role = 'student' AND (u.full_name LIKE ? OR u.phone LIKE ? OR u.username LIKE ?)
-         ORDER BY u.created_at DESC LIMIT 500`,
-      )
-      .all(search, search, search) as (User & { track_title: string })[]
-  )
-    .map((student) => ({ ...student, state: subscriptionState(student.subscription_ends_at, now) }))
-    .filter((student) => !phase || student.state.phase === phase);
+  const all = getStudentOverview(now);
+  const filter = FILTERS.find((item) => item.value === phase) ?? FILTERS[0];
+  const term = q.trim();
+  const students = all
+    .filter(filter.match)
+    .filter((student) => !term || [student.fullName, student.phone, student.username].some((value) => value.includes(term)));
 
   return (
     <>
-      <PageTitle title="هنرجوها" />
+      <PageHeader title="وضعیت هنرجوها" description="پیشرفت، آخرین فعالیت و اشتراک هر هنرجو. برای کنترل حساب روی نام هنرجو بزنید." />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
-          {FILTERS.map(([value, label]) => (
-            <Link key={value} href={`/admin/students${value ? `?phase=${value}` : ""}`} className={`btn btn-sm ${phase === value ? "bg-marine text-white" : "btn-quiet"}`}>
-              {label}
-            </Link>
+          {FILTERS.map((item) => (
+            <Button key={item.value} asChild size="sm" variant={filter.value === item.value ? "default" : "outline"}>
+              <Link href={`/admin/students${item.value ? `?phase=${item.value}` : ""}`}>{item.label} ({fa(all.filter(item.match).length)})</Link>
+            </Button>
           ))}
         </div>
         <form className="flex gap-2">
           {phase && <input type="hidden" name="phase" value={phase} />}
-          <input name="q" defaultValue={q} placeholder="نام، موبایل یا نام کاربری" aria-label="جست‌وجوی هنرجو" className="input min-h-9! w-56 py-1 text-sm" />
-          <button className="btn btn-quiet btn-sm" type="submit">جست‌وجو</button>
+          <Input name="q" defaultValue={q} placeholder="نام، موبایل یا نام کاربری" aria-label="جست‌وجوی هنرجو" className="w-56" />
+          <Button type="submit" variant="outline" size="icon" aria-label="جست‌وجو"><SearchIcon /></Button>
         </form>
       </div>
       {students.length === 0 ? (
-        <EmptyState title="هنرجویی پیدا نشد" hint="هنرجوها بعد از تایید پیش‌ثبت‌نام به این فهرست اضافه می‌شوند." />
+        <EmptyState title="هنرجویی پیدا نشد" description="فیلتر یا عبارت جست‌وجو را تغییر دهید." />
       ) : (
-        <ul className="sheet divide-y divide-line">
-          {students.map((student) => (
-            <li key={student.id}>
-              <Link href={`/admin/students/${student.id}`} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 p-4 hover:bg-mist">
-                <span>
-                  <span className="font-bold">{student.full_name}</span>
-                  <span className="ms-3 text-sm text-ink-soft" dir="ltr">{student.phone}</span>
-                </span>
-                <span className="flex flex-wrap items-center gap-3 text-sm text-ink-soft">
-                  <span className="badge badge-quiet">{student.track_title}</span>
-                  <span>٪{fa(getTrackProgress(student.id, student.track_id!).percent)} پیشرفت</span>
-                  {student.subscription_ends_at && <span>تا {faDate(student.subscription_ends_at)}</span>}
-                  {student.is_active ? (
-                    <span className={`badge ${PHASE_LABEL[student.state.phase][1]}`}>{PHASE_LABEL[student.state.phase][0]}</span>
-                  ) : (
-                    <span className="badge badge-ember">حساب مسدود</span>
-                  )}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="rounded-xl border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="ps-4">هنرجو</TableHead>
+                <TableHead>الان کجاست</TableHead>
+                <TableHead>کل مسیر</TableHead>
+                <TableHead>مطالعه ۷ روز</TableHead>
+                <TableHead>آخرین فعالیت</TableHead>
+                <TableHead>اشتراک</TableHead>
+                <TableHead>نیاز به اقدام</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {students.map((student) => (
+                <TableRow key={student.id}>
+                  <TableCell className="ps-4">
+                    <Link href={`/admin/students/${student.id}`} className="font-medium underline-offset-4 hover:underline">{student.fullName}</Link>
+                    <p className="text-xs text-muted-foreground">{student.trackTitle}، <span dir="ltr">{student.phone}</span></p>
+                  </TableCell>
+                  <TableCell>
+                    {student.currentCourse ? (
+                      <>
+                        <span className="text-sm">{student.currentCourse}</span>
+                        <p className="text-xs text-muted-foreground">٪{fa(student.currentCoursePercent)} از این زبان</p>
+                      </>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">{student.percent === 100 ? "مسیر کامل شده" : "ویدیویی نیست"}</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Progress value={student.percent} className="h-1.5 w-20" aria-hidden="true" />
+                      <span className="text-sm font-medium">٪{fa(student.percent)}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm">{student.weekSeconds > 0 ? studyTime(student.weekSeconds) : "بدون مطالعه"}</TableCell>
+                  <TableCell className="text-sm">{daysAgoLabel(student.lastActiveDay, now)}</TableCell>
+                  <TableCell>
+                    {student.isActive ? (
+                      <StatusBadge tone={PHASE_LABEL[student.state.phase][1]}>{PHASE_LABEL[student.state.phase][0]}</StatusBadge>
+                    ) : (
+                      <StatusBadge tone="danger">حساب مسدود</StatusBadge>
+                    )}
+                    {student.endsAt && <p className="mt-1 text-xs text-muted-foreground">تا {faDate(student.endsAt)}</p>}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {student.pendingPayment && <StatusBadge tone="info">واریز منتظر تایید</StatusBadge>}
+                      {student.pendingReviews > 0 && <StatusBadge tone="info">آزمون برای تصحیح</StatusBadge>}
+                      {student.inactive && <StatusBadge tone="warning">بی‌فعالیت</StatusBadge>}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </>
   );

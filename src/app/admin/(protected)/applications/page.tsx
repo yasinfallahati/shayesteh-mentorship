@@ -1,22 +1,18 @@
 import Link from "next/link";
-import { EmptyState, PageTitle } from "@/components/ui";
+import { EmptyState, PageHeader, StatusBadge } from "@/components/kit";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { fa, faDateTime } from "@/lib/format";
 
-const APPLICATION_STATUS = {
-  new: ["جدید", "badge-azure"],
-  contacted: ["تماس گرفته شد", "badge-sun"],
-  accepted: ["پذیرفته شد", "badge-grass"],
-  rejected: ["رد شد", "badge-ember"],
-} as const;
-
-type Status = keyof typeof APPLICATION_STATUS;
+const STATUS_LABEL = { new: "جدید", contacted: "تماس گرفته شد", accepted: "پذیرفته شد", rejected: "رد شد" } as const;
+type Status = keyof typeof STATUS_LABEL;
 
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   await requireAdmin();
   const { status } = await searchParams;
-  const current: Status = status && status in APPLICATION_STATUS ? (status as Status) : "new";
+  const current: Status = status && status in STATUS_LABEL ? (status as Status) : "new";
   const database = db();
   const rows = database
     .prepare(
@@ -32,40 +28,35 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <PageTitle title="پیش‌ثبت‌نام‌ها" hint="با متقاضی تماس بگیرید. اگر شرایط را پذیرفت، از صفحه درخواست برایش حساب بسازید." />
-      <div className="mb-4 flex flex-wrap gap-2" role="tablist">
-        {(Object.keys(APPLICATION_STATUS) as Status[]).map((key) => (
-          <Link
-            key={key}
-            href={`/admin/applications?status=${key}`}
-            role="tab"
-            aria-selected={key === current}
-            className={`btn btn-sm ${key === current ? "bg-marine text-white" : "btn-quiet"}`}
-          >
-            {APPLICATION_STATUS[key][0]} ({fa(totals[key] ?? 0)})
-          </Link>
+      <PageHeader title="پیش‌ثبت‌نام‌ها" description="با متقاضی تماس بگیرید. اگر شرایط را پذیرفت، از صفحه درخواست برایش حساب بسازید." />
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(Object.keys(STATUS_LABEL) as Status[]).map((key) => (
+          <Button key={key} asChild size="sm" variant={key === current ? "default" : "outline"}>
+            <Link href={`/admin/applications?status=${key}`}>{STATUS_LABEL[key]} ({fa(totals[key] ?? 0)})</Link>
+          </Button>
         ))}
       </div>
       {rows.length === 0 ? (
         <EmptyState title="درخواستی در این وضعیت نیست" />
       ) : (
-        <ul className="sheet divide-y divide-line">
-          {rows.map((row) => (
-            <li key={row.id}>
-              <Link href={`/admin/applications/${row.id}`} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 p-4 hover:bg-mist">
-                <span>
-                  <span className="font-bold">{row.full_name}</span>
-                  <span className="ms-3 text-sm text-ink-soft" dir="ltr">{row.phone}</span>
-                </span>
-                <span className="flex items-center gap-3 text-sm text-ink-soft">
-                  <span className="badge badge-quiet">{row.track_title}</span>
-                  <span>{row.level}</span>
-                  <span>{faDateTime(row.created_at)}</span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="rounded-xl border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow><TableHead className="ps-4">نام</TableHead><TableHead>موبایل</TableHead><TableHead>مسیر</TableHead><TableHead>سطح</TableHead><TableHead>تاریخ</TableHead></TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell className="ps-4 font-medium"><Link href={`/admin/applications/${row.id}`} className="underline-offset-4 hover:underline">{row.full_name}</Link></TableCell>
+                  <TableCell><span dir="ltr">{row.phone}</span></TableCell>
+                  <TableCell><StatusBadge tone="neutral">{row.track_title}</StatusBadge></TableCell>
+                  <TableCell className="text-muted-foreground">{row.level}</TableCell>
+                  <TableCell className="text-muted-foreground">{faDateTime(row.created_at)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </>
   );

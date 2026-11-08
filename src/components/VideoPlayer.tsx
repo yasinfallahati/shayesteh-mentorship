@@ -1,9 +1,10 @@
 "use client";
 
+import { CheckCircle2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Ring } from "@/components/kit";
 import { fa } from "@/lib/format";
-import { CheckIcon, Ring } from "./ui";
 
 const BUCKETS = 100;
 const FLUSH_MS = 10_000;
@@ -88,12 +89,14 @@ export function VideoPlayer({
 
   return (
     <div>
-      <div className="overflow-hidden rounded-2xl bg-marine" dir="ltr">
+      <div className="overflow-hidden rounded-xl bg-pine" dir="ltr">
         <video
           ref={videoRef}
           src={`/api/videos/${videoId}/stream`}
           controls
-          controlsList="nodownload"
+          controlsList="nodownload noremoteplayback"
+          disablePictureInPicture
+          disableRemotePlayback
           playsInline
           preload="metadata"
           className="aspect-video w-full"
@@ -112,19 +115,16 @@ export function VideoPlayer({
         />
       </div>
       <div className="mt-4 flex items-center gap-3">
-        <Ring value={percent} size={58} stroke={6} label={`${percent} درصد از این ویدیو دیده شده`}>
-          <span className="text-xs font-bold">٪{fa(percent)}</span>
+        <Ring value={percent} size={52} stroke={5} label={`${percent} درصد از این ویدیو دیده شده`}>
+          <span className="text-xs font-semibold">٪{fa(percent)}</span>
         </Ring>
-        <div>
-          <p className="font-bold">از این ویدیو</p>
-          {completed ? (
-            <p className="flex items-center gap-1 text-sm font-medium text-grass-4">
-              <CheckIcon /> کامل دیده‌اید
-            </p>
-          ) : (
-            <p className="text-sm text-ink-soft">با دیدن ٪{fa(90)} از ویدیو، کامل حساب می‌شود.</p>
-          )}
-        </div>
+        {completed ? (
+          <p className="flex items-center gap-1.5 text-sm font-medium text-success">
+            <CheckCircle2Icon className="size-4" aria-hidden="true" /> این ویدیو را کامل دیده‌اید
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">با دیدن ٪{fa(90)} از ویدیو، کامل حساب می‌شود.</p>
+        )}
       </div>
     </div>
   );

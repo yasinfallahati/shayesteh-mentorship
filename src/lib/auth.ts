@@ -85,6 +85,6 @@ export async function requireOpenStudent() {
 
 export async function requireAdmin() {
   const user = await currentUser();
-  if (!user || user.role !== "admin") redirect("/admin/login");
+  if (!user || user.role !== "admin") redirect("/login");
   return user;
 }

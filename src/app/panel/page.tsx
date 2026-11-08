@@ -1,12 +1,22 @@
+import { PlayIcon } from "lucide-react";
 import Link from "next/link";
 import { Heatmap } from "@/components/Heatmap";
+import { PageHeader, StatTile } from "@/components/kit";
 import { PathProgress } from "@/components/PathProgress";
-import { CheckIcon, LockIcon, Ring } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { UpcomingMeetups } from "@/components/UpcomingMeetups";
 import { requireOpenStudent } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { fa, faDayKey, studyTime } from "@/lib/format";
+import { fa, studyTime } from "@/lib/format";
+import { byPath, getLeaderboard, rankEntries } from "@/lib/leaderboard";
+import { getUpcomingMeetups } from "@/lib/meetups";
 import { getActivity, getTrackProgress } from "@/lib/progress";
 import { subscriptionState } from "@/lib/subscription";
+
+const WEEK_LABELS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
 
 export default async function DashboardPage() {
   const user = await requireOpenStudent();
@@ -29,107 +39,124 @@ export default async function DashboardPage() {
   const passedDays = activity.week.filter((day) => !day.isFuture);
   const weekAverage = passedDays.reduce((sum, day) => sum + day.seconds, 0) / Math.max(1, passedDays.length);
   const weekMax = Math.max(1, ...activity.week.map((day) => day.seconds));
+  const standings = rankEntries(getLeaderboard(user.track_id!), byPath);
+  const myRank = standings.find((entry) => entry.id === user.id)?.rank;
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="display text-[2rem] text-marine">سلام {user.full_name.split(" ")[0]}</h1>
-          <p className="text-sm text-ink-soft">
+      <PageHeader
+        title={`سلام ${user.full_name.split(" ")[0]}`}
+        description={
+          <>
             مسیر {track.title}
             {state.phase === "active" && `، ${fa(state.daysLeft)} روز تا پایان اشتراک`}
-          </p>
-        </div>
-        {nextVideo && (
-          <Link href={`/panel/watch/${nextVideo.id}`} className="btn btn-primary max-w-full">
-            <span className="truncate">{recent ? "ادامه" : "شروع"}: {nextVideo.title}</span>
-          </Link>
-        )}
+            {myRank && (
+              <>
+                ،{" "}
+                <Link href="/panel/leaderboard" className="font-medium text-primary underline-offset-4 hover:underline">
+                  رتبه {fa(myRank)} از {fa(standings.length)} در جدول رقابت
+                </Link>
+              </>
+            )}
+          </>
+        }
+        action={
+          nextVideo && (
+            <Button asChild className="max-w-full">
+              <Link href={`/panel/watch/${nextVideo.id}`}>
+                <PlayIcon className="fill-current" aria-hidden="true" />
+                <span className="truncate">{recent ? "ادامه" : "شروع"}: {nextVideo.title}</span>
+              </Link>
+            </Button>
+          )
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile label="ساعت مطالعه" value={fa(Math.round(activity.totalSeconds / 3600))} hint="در یک سال گذشته" />
+        <StatTile label="روزهای پشت‌سرهم" value={fa(activity.streak)} hint={`${fa(activity.activeDays)} روز فعال در سال`} />
+        <StatTile label="ویدیوی کامل" value={`${fa(progress.completedCount)} از ${fa(progress.videoCount)}`} />
+        <StatTile label="آزمون قبول‌شده" value={fa(passedExams)} />
       </div>
 
-      <section className="sheet p-5 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-          <h2 className="display text-2xl text-marine">چمن فعالیت</h2>
-          <p className="text-sm text-ink-soft">
-            {fa(activity.activeDays)} روز فعال در سال گذشته
-            {activity.streak > 0 && `، ${fa(activity.streak)} روز پشت‌سرهم`}
-          </p>
-        </div>
-        <Heatmap
-          days={activity.days}
-          summary={`${activity.activeDays} روز فعال در یک سال گذشته و ${activity.streak} روز فعالیت پشت‌سرهم`}
-        />
-      </section>
+      <UpcomingMeetups meetups={getUpcomingMeetups(user.track_id!)} now={Date.now()} />
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-3">
-        <section className="sheet p-5 sm:p-6">
-          <h2 className="display text-2xl text-marine">مطالعه این هفته</h2>
-          <p className="text-sm font-medium text-azure">میانگین روزانه: {studyTime(weekAverage)}</p>
-          <ul className="mt-4 space-y-2">
-            {activity.week.map((day) => (
-              <li
-                key={day.key}
-                className={`relative flex h-10 items-center justify-between overflow-hidden rounded-lg px-3 text-sm ${day.isFuture ? "bg-mist text-ink-soft" : "bg-[#e9f6ec]"}`}
-              >
-                {!day.isFuture && (
-                  <span
-                    className="absolute inset-y-0 right-0 bg-grass-1"
-                    style={{ width: `${(day.seconds / weekMax) * 100}%` }}
-                    aria-hidden="true"
-                  />
-                )}
-                <span className={`relative ${day.isToday ? "font-bold" : ""}`}>{faDayKey(day.key).split(" ")[0].replace("،", "")}</span>
-                <span className="relative flex items-center gap-1 font-medium">
-                  {day.isFuture ? <LockIcon className="size-3.5" /> : day.seconds > 0 ? studyTime(day.seconds) : "۰"}
-                  {!day.isFuture && day.seconds > 0 && <CheckIcon className="size-3.5 text-grass-4" />}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>چمن فعالیت</CardTitle>
+          <CardDescription>هر خانه یک روز است و رنگ پررنگ‌تر یعنی مطالعه بیشتر.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Heatmap
+            days={activity.days}
+            summary={`${activity.activeDays} روز فعال در یک سال گذشته و ${activity.streak} روز فعالیت پشت‌سرهم`}
+          />
+        </CardContent>
+      </Card>
 
-        <section className="sheet p-5 sm:p-6">
-          <h2 className="display text-2xl text-marine">پیشرفت هر بخش</h2>
-          {progress.courses.length === 0 ? (
-            <p className="mt-3 text-sm text-ink-soft">هنوز بخشی برای این مسیر ثبت نشده است.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-line">
-              {progress.courses.map((course) => (
-                <li key={course.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate font-bold">{course.title}</p>
-                    <p className="text-xs text-ink-soft">{studyTime(course.watchedSeconds)} مطالعه</p>
-                  </div>
-                  <Ring value={course.percent} size={52} stroke={5} label={`${course.title}: ${course.percent} درصد`}>
-                    <span className="text-[0.7rem] font-bold">٪{fa(course.percent)}</span>
-                  </Ring>
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>پیشرفت مسیر</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PathProgress
+              overall={progress.percent}
+              trackTitle={track.title}
+              courses={progress.courses.map(({ id, title, percent }) => ({ id, title, percent }))}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>پیشرفت هر بخش</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {progress.courses.length === 0 ? (
+              <p className="text-sm text-muted-foreground">هنوز بخشی برای این مسیر ثبت نشده است.</p>
+            ) : (
+              <ul className="grid gap-4">
+                {progress.courses.map((course) => (
+                  <li key={course.id}>
+                    <div className="mb-1.5 flex items-baseline justify-between gap-3 text-sm">
+                      <span className="truncate font-medium">{course.title}</span>
+                      <span className="text-muted-foreground">٪{fa(course.percent)}</span>
+                    </div>
+                    <Progress value={course.percent} className="h-1.5" aria-label={`${course.title}: ${course.percent} درصد`} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>مطالعه این هفته</CardTitle>
+            <CardDescription>میانگین روزانه: {studyTime(weekAverage)}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex h-44 items-end gap-2">
+              {activity.week.map((day, index) => (
+                <li key={day.key} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex w-full flex-1 items-end" tabIndex={day.isFuture ? undefined : 0}>
+                        <div
+                          className={`w-full rounded-t-[4px] ${day.isFuture ? "bg-muted" : day.isToday ? "bg-grass-4" : "bg-grass-3"}`}
+                          style={{ height: day.isFuture ? 4 : `${Math.max(3, (day.seconds / weekMax) * 100)}%` }}
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    {!day.isFuture && <TooltipContent>{WEEK_LABELS[index]}: {day.seconds > 0 ? studyTime(day.seconds) : "بدون مطالعه"}</TooltipContent>}
+                  </Tooltip>
+                  <span className={`text-xs ${day.isToday ? "font-bold" : "text-muted-foreground"}`}>{WEEK_LABELS[index][0]}</span>
                 </li>
               ))}
             </ul>
-          )}
-        </section>
-
-        <section className="sheet p-5 sm:p-6">
-          <PathProgress
-            overall={progress.percent}
-            trackTitle={track.title}
-            courses={progress.courses.map(({ id, title, percent }) => ({ id, title, percent }))}
-          />
-          <dl className="mt-5 grid grid-cols-3 gap-2 border-t border-line pt-4 text-center">
-            <div>
-              <dd className="display text-2xl text-marine">{fa(progress.completedCount)}</dd>
-              <dt className="text-xs text-ink-soft">ویدیو کامل</dt>
-            </div>
-            <div>
-              <dd className="display text-2xl text-marine">{fa(passedExams)}</dd>
-              <dt className="text-xs text-ink-soft">آزمون قبول</dt>
-            </div>
-            <div>
-              <dd className="display text-2xl text-marine">{fa(Math.round(activity.totalSeconds / 3600))}</dd>
-              <dt className="text-xs text-ink-soft">ساعت مطالعه</dt>
-            </div>
-          </dl>
-        </section>
+          </CardContent>
+        </Card>
       </div>
     </>
   );

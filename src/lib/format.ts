@@ -72,6 +72,84 @@ export function latinDigits(value: string) {
     .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
 }
 
+export const JALALI_MONTHS = [
+  "فروردین",
+  "اردیبهشت",
+  "خرداد",
+  "تیر",
+  "مرداد",
+  "شهریور",
+  "مهر",
+  "آبان",
+  "آذر",
+  "دی",
+  "بهمن",
+  "اسفند",
+];
+
+const DAY_MS = 86_400_000;
+const TEHRAN_OFFSET_MINUTES = 210;
+
+function persianParts(ts: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-u-ca-persian-nu-latn", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(ts);
+  const read = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value);
+  return { year: read("year"), month: read("month"), day: read("day"), hour: read("hour"), minute: read("minute") };
+}
+
+export const jalaliParts = (ts: number) => persianParts(ts, TEHRAN);
+
+/** Converts a Jalali date and Tehran wall-clock time. Returns null if the date does not exist. */
+export function tehranTimestamp(year: number, month: number, day: number, hour: number, minute: number) {
+  const start = Date.UTC(year + 621, 0, 1);
+  for (let offset = 0; offset < 800; offset += 1) {
+    const candidate = start + offset * DAY_MS;
+    const parts = persianParts(candidate, "UTC");
+    if (parts.year === year && parts.month === month && parts.day === day) {
+      return candidate + (hour * 60 + minute - TEHRAN_OFFSET_MINUTES) * 60_000;
+    }
+  }
+  return null;
+}
+
+const meetupDayFormat = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+  timeZone: TEHRAN,
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+const meetupTimeFormat = new Intl.DateTimeFormat("fa-IR", {
+  timeZone: TEHRAN,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+export const faMeetupDay = (ts: number) => meetupDayFormat.format(ts);
+export const faMeetupTime = (ts: number) => meetupTimeFormat.format(ts);
+
+export function daysAgoLabel(dayKey: string | null, now: number) {
+  if (!dayKey) return "هنوز شروع نکرده";
+  const days = Math.round((Date.parse(`${tehranDay(now)}T00:00:00Z`) - Date.parse(`${dayKey}T00:00:00Z`)) / DAY_MS);
+  if (days <= 0) return "امروز";
+  if (days === 1) return "دیروز";
+  return `${fa(days)} روز پیش`;
+}
+
+export function daysUntilLabel(ts: number, now: number) {
+  const days = Math.round((Date.parse(`${tehranDay(ts)}T00:00:00Z`) - Date.parse(`${tehranDay(now)}T00:00:00Z`)) / DAY_MS);
+  if (days <= 0) return "امروز";
+  if (days === 1) return "فردا";
+  return `${fa(days)} روز دیگر`;
+}
+
 export function formatCard(cardNumber: string) {
   return cardNumber.replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ");
 }
